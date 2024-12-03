@@ -35,7 +35,7 @@ func (p *SelectParser) Beautify() string {
 }
 
 // 提取查询字段
-func (p *SelectParser) extractFields() *SelectParser {
+func (p *SelectParser) parseFields() *SelectParser {
 	sql := p.tempSql
 	if start, end := betweenOfSql(sql, SELECT, FROM); start >= 0 {
 		fieldsSql := sql[start+1 : end]
@@ -71,13 +71,13 @@ func (p *SelectParser) extractFields() *SelectParser {
 }
 
 // 提取查询主表
-func (p *SelectParser) extractTable() *SelectParser {
+func (p *SelectParser) parseTable() *SelectParser {
 	p.Table, p.tempSql = extractTable(p.tempSql, p.indent)
 	return p
 }
 
 // 提取关联子表
-func (p *SelectParser) extractJoins() *SelectParser {
+func (p *SelectParser) parseJoins() *SelectParser {
 	sql := p.tempSql
 
 	var sqlList []string
@@ -125,13 +125,13 @@ func (p *SelectParser) extractJoins() *SelectParser {
 }
 
 // 提取查询条件
-func (p *SelectParser) extractWhere() *SelectParser {
+func (p *SelectParser) parseWhere() *SelectParser {
 	p.Where, p.tempSql = extractWhere(p.tempSql)
 	return p
 }
 
 // 提取group By
-func (p *SelectParser) extractGroupBy() *SelectParser {
+func (p *SelectParser) parseGroupBy() *SelectParser {
 	sql := p.tempSql
 	if index := keywordIndexOfSql(sql, GroupBy); index >= 0 {
 		var groupBySql string
@@ -147,7 +147,7 @@ func (p *SelectParser) extractGroupBy() *SelectParser {
 }
 
 // 提取having
-func (p *SelectParser) extractHaving() *SelectParser {
+func (p *SelectParser) parseHaving() *SelectParser {
 	sql := p.tempSql
 	if index := keywordIndexOfSql(sql, HAVING); index >= 0 {
 		sql = sql[index+6:]
@@ -172,7 +172,7 @@ func (p *SelectParser) extractHaving() *SelectParser {
 }
 
 // 提取order by
-func (p *SelectParser) extractOrderBy() *SelectParser {
+func (p *SelectParser) parseOrderBy() *SelectParser {
 	sql := p.tempSql
 	if index := keywordIndexOfSql(sql, OrderBy, -1); index > 0 {
 		var orderBySql string
@@ -188,7 +188,7 @@ func (p *SelectParser) extractOrderBy() *SelectParser {
 }
 
 // 提取limit
-func (p *SelectParser) extractLimit() *SelectParser {
+func (p *SelectParser) parseLimit() *SelectParser {
 	sql := p.tempSql
 	i := keywordIndexOfSql(sql, LIMIT, -1)
 	j := keywordIndexOfSql(sql, RightBracket, -1)

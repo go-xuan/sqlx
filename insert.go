@@ -13,29 +13,39 @@ func (p *InsertParser) Beautify() string {
 	return ""
 }
 
-func (p *InsertParser) extractTable() *InsertParser {
+func (p *InsertParser) parseTable() *InsertParser {
 	sql := p.tempSql
-	// 去除update关键字
+	// 去除insert关键字
 	if strings.HasPrefix(sql, INSERT) {
 		sql = sql[7:]
 	}
-	// 如果有from则先去除
-	if strings.HasPrefix(sql, FROM) {
+	// 去除into关键字
+	if strings.HasPrefix(sql, INTO) {
 		sql = sql[5:]
 	}
 	// 根据set关键字进行拆分
-	if index := keywordIndexOfSql(sql, WHERE); index >= 0 {
+	if index := indexOfSql(sql, LeftBracket); index >= 0 {
+		p.Table = &TableParser{
+			Name: strings.TrimSpace(sql[:index-1]),
+		}
 		p.tempSql = sql[index:]
-		sql = sql[:index]
 	}
-	var name, alias string
-	if index := indexOfSql(sql, Blank, 1); index >= 0 {
-		name = sql[:index]
-		alias = extractAlias(sql[index+1:])
+	return p
+}
+
+func (p *InsertParser) extractFields() *InsertParser {
+	sql := p.tempSql
+	// 根据set关键字进行拆分
+	if start, end := betweenOfSql(sql, LeftBracket, RightBracket); start >= 0 && end >= start {
+		sql = sql[start+1 : end-1]
+		p.tempSql = sql[end+1:]
 	}
-	p.Table = &TableParser{
-		Name:  name,
-		Alias: alias,
+	if names := strings.Split(sql, Comma); len(names) > 0 {
+		var fields []*FieldParser
+		for _, name := range names {
+			fields = append(fields, &FieldParser{Name: name})
+		}
+		p.Fields = fields
 	}
 	return p
 }

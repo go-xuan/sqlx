@@ -84,7 +84,7 @@ func (p *UpdateSqlParser) buildConditionSql() string {
 	return sql.String()
 }
 
-func (p *UpdateSqlParser) extractTable() *UpdateSqlParser {
+func (p *UpdateSqlParser) parseTable() *UpdateSqlParser {
 	sql := p.tempSql
 	// 去除update关键字
 	if strings.HasPrefix(sql, UPDATE) {
@@ -112,7 +112,7 @@ func (p *UpdateSqlParser) extractTable() *UpdateSqlParser {
 }
 
 // 提取字段
-func (p *UpdateSqlParser) extractFields() *UpdateSqlParser {
+func (p *UpdateSqlParser) parseFields() *UpdateSqlParser {
 	sql := p.tempSql
 	// 根据where关键字进行拆分
 	if index := keywordIndexOfSql(sql, WHERE); index > 0 {
@@ -142,7 +142,7 @@ func (p *UpdateSqlParser) extractFields() *UpdateSqlParser {
 }
 
 // 提取查询条件
-func (p *UpdateSqlParser) extractWhere() *UpdateSqlParser {
+func (p *UpdateSqlParser) parseWhere() *UpdateSqlParser {
 	p.Where, p.tempSql = extractWhere(p.tempSql)
 	return p
 }

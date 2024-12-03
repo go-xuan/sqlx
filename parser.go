@@ -10,12 +10,26 @@ type Parser interface {
 	Beautify() string
 }
 
-// ParserBase SQL解析器base
-type ParserBase struct {
-	originSql string            // 原始sql
-	tempSql   string            // 临时sql
-	indent    int               // 缩进量
-	replacer  *strings.Replacer // 替换器
+func Parse(sql string) Parser {
+	sql = strings.ReplaceAll(sql, NewLine, Blank)                // 移除换行
+	sql = regexp.MustCompile(`\s+`).ReplaceAllString(sql, Blank) // 去除多余空格
+	sql = strings.TrimSpace(sql)                                 // 去除空格
+
+	sqlType := strings.ToLower(sql[:6]) // 根据sql查询语句开头关键字判断sql类型
+	switch sqlType {
+	case SELECT:
+		return parseSelectSQL(sql)
+	case UPDATE:
+		return parseUpdateSQL(sql)
+	case DELETE:
+		return parseDeleteSQL(sql)
+	case INSERT:
+		return parseInsertSQL(sql)
+	case CREATE:
+		return parseCreateSQL(sql)
+	default:
+		panic("")
+	}
 }
 
 // 初始化SQL解析器base
@@ -31,10 +45,18 @@ func newParserBase(sql string, indent ...int) ParserBase {
 	return base
 }
 
+// ParserBase SQL解析器base
+type ParserBase struct {
+	originSql string            // 原始sql，原始完整sql（变量值需要通过 replacer 还原）
+	tempSql   string            // 临时sql，存储每个步骤经过sql拆解之后的sql片段
+	indent    int               // 缩进量
+	replacer  *strings.Replacer // 替换器，用于将 originSql 的变量占位符还原成原始值
+}
+
 // 完成解析
 func (p *ParserBase) prepare() {
 	sql := p.tempSql
-	// 提取sql中所有的参数值，避免参数值值影响后续sql解析
+	// 解析sql中所有的参数值，避免参数值值影响后续sql解析
 	var replacer *strings.Replacer
 	if sql, replacer = parseValuesInSql(sql); replacer != nil {
 		p.replacer = replacer
@@ -61,28 +83,6 @@ func (p *ParserBase) align(sql ...string) string {
 	}
 }
 
-func Parse(sql string) Parser {
-	sql = strings.ReplaceAll(sql, NewLine, Blank)                // 移除换行
-	sql = regexp.MustCompile(`\s+`).ReplaceAllString(sql, Blank) // 去除多余空格
-	sql = strings.TrimSpace(sql)                                 // 去除空格
-
-	sqlType := strings.ToLower(sql[:6]) // 根据sql查询语句开头关键字判断sql类型
-	switch sqlType {
-	case SELECT:
-		return parseSelectSQL(sql)
-	case UPDATE:
-		return parseUpdateSQL(sql)
-	case DELETE:
-		return parseDeleteSQL(sql)
-	case INSERT:
-		return parseInsertSQL(sql)
-	case CREATE:
-		return parseCreateSQL(sql)
-	default:
-		panic("")
-	}
-}
-
 // 解析sql字符串
 func parseSelectSQL(sql string, indent ...int) *SelectParser {
 	// sql初始化
@@ -90,16 +90,16 @@ func parseSelectSQL(sql string, indent ...int) *SelectParser {
 		ParserBase: newParserBase(sql, indent...),
 	}
 
-	parser.prepare()        // 解析准备
-	parser.extractLimit()   // 提取limit
-	parser.extractOrderBy() // 提取order by
-	parser.extractFields()  // 提取查询字段
-	parser.extractTable()   // 提取主表
-	parser.extractJoins()   // 提取关联子表
-	parser.extractWhere()   // 提取where
-	parser.extractGroupBy() // 提取group By
-	parser.extractHaving()  // 提取having
-	parser.finish()         // 解析完成
+	parser.prepare()      // 解析准备
+	parser.parseLimit()   // 解析limit
+	parser.parseOrderBy() // 解析order by
+	parser.parseFields()  // 解析字段
+	parser.parseTable()   // 解析主表
+	parser.parseJoins()   // 解析关联子表
+	parser.parseWhere()   // 解析where
+	parser.parseGroupBy() // 解析group By
+	parser.parseHaving()  // 解析having
+	parser.finish()       // 解析完成
 
 	return parser
 }
@@ -110,11 +110,11 @@ func parseUpdateSQL(sql string, indent ...int) *UpdateSqlParser {
 		ParserBase: newParserBase(sql, indent...),
 	}
 
-	parser.prepare()       // 解析准备
-	parser.extractTable()  // 提取更新主表
-	parser.extractFields() // 提取更新字段
-	parser.extractWhere()  // 提取查询条件
-	parser.finish()        // 解析完成
+	parser.prepare()     // 解析准备
+	parser.parseTable()  // 解析主表
+	parser.parseFields() // 解析更新字段
+	parser.parseWhere()  // 解析查询条件
+	parser.finish()      // 解析完成
 
 	return parser
 }
@@ -125,11 +125,10 @@ func parseDeleteSQL(sql string, indent ...int) *DeleteParser {
 		ParserBase: newParserBase(sql, indent...),
 	}
 
-	parser.prepare()      // 解析准备
-	parser.extractTable() // 提取更新主表
-	parser.extractWhere() // 提取查询条件
-
-	parser.finish() // 解析完成
+	parser.prepare()    // 解析准备
+	parser.parseTable() // 解析主表
+	parser.parseWhere() // 解析查询条件
+	parser.finish()     // 解析完成
 
 	return parser
 }
@@ -140,9 +139,11 @@ func parseInsertSQL(sql string, indent ...int) *InsertParser {
 		ParserBase: newParserBase(sql, indent...),
 	}
 
-	parser.prepare() // 解析准备
+	parser.prepare()       // 解析准备
+	parser.parseTable()    // 解析主表
+	parser.extractFields() // 解析字段
+	parser.finish()        // 解析完成
 
-	parser.finish() // 解析完成
 	return parser
 }
 
@@ -152,8 +153,9 @@ func parseCreateSQL(sql string, indent ...int) *CreateParser {
 		ParserBase: newParserBase(sql, indent...),
 	}
 
-	parser.prepare() // 解析准备
+	parser.prepare()    // 解析准备
+	parser.parseTable() // 解析主表
+	parser.finish()     // 解析完成
 
-	parser.finish() // 解析完成
 	return parser
 }

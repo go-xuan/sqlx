@@ -12,7 +12,7 @@ func (p *DeleteParser) Beautify() string {
 	return ""
 }
 
-func (p *DeleteParser) extractTable() *DeleteParser {
+func (p *DeleteParser) parseTable() *DeleteParser {
 	sql := p.tempSql
 	// 去除update关键字
 	if strings.HasPrefix(sql, DELETE) {
@@ -40,7 +40,7 @@ func (p *DeleteParser) extractTable() *DeleteParser {
 }
 
 // 提取查询条件
-func (p *DeleteParser) extractWhere() *DeleteParser {
+func (p *DeleteParser) parseWhere() *DeleteParser {
 	p.Where, p.tempSql = extractWhere(p.tempSql)
 	return p
 }
