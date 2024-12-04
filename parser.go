@@ -32,6 +32,87 @@ func Parse(sql string) Parser {
 	}
 }
 
+// 解析查询SQL
+func parseSelectSQL(sql string, indent ...int) *SelectParser {
+	// sql初始化
+	var parser = &SelectParser{
+		ParserBase: newParserBase(sql, indent...),
+	}
+
+	parser.prepare()      // 解析准备
+	parser.parseLimit()   // 解析limit
+	parser.parseOrderBy() // 解析order by
+	parser.parseFields()  // 解析字段
+	parser.parseTable()   // 解析主表
+	parser.parseJoins()   // 解析关联子表
+	parser.parseWhere()   // 解析where
+	parser.parseGroupBy() // 解析group By
+	parser.parseHaving()  // 解析having
+	parser.finish()       // 解析完成
+
+	return parser
+}
+
+// 解析更新SQL
+func parseUpdateSQL(sql string, indent ...int) *UpdateSqlParser {
+	// sql初始化
+	var parser = &UpdateSqlParser{
+		ParserBase: newParserBase(sql, indent...),
+	}
+
+	parser.prepare()     // 解析准备
+	parser.parseTable()  // 解析主表
+	parser.parseFields() // 解析更新字段
+	parser.parseWhere()  // 解析查询条件
+	parser.finish()      // 解析完成
+
+	return parser
+}
+
+// 解析删除SQL
+func parseDeleteSQL(sql string, indent ...int) *DeleteParser {
+	// sql初始化
+	var parser = &DeleteParser{
+		ParserBase: newParserBase(sql, indent...),
+	}
+
+	parser.prepare()    // 解析准备
+	parser.parseTable() // 解析主表
+	parser.parseWhere() // 解析查询条件
+	parser.finish()     // 解析完成
+
+	return parser
+}
+
+// 解析插入SQL
+func parseInsertSQL(sql string, indent ...int) *InsertParser {
+	// sql初始化
+	var parser = &InsertParser{
+		ParserBase: newParserBase(sql, indent...),
+	}
+
+	parser.prepare()       // 解析准备
+	parser.parseTable()    // 解析主表
+	parser.extractFields() // 解析字段
+	parser.finish()        // 解析完成
+
+	return parser
+}
+
+// 解析建表SQL
+func parseCreateSQL(sql string, indent ...int) *CreateParser {
+	// sql初始化
+	var parser = &CreateParser{
+		ParserBase: newParserBase(sql, indent...),
+	}
+
+	parser.prepare()    // 解析准备
+	parser.parseTable() // 解析主表
+	parser.finish()     // 解析完成
+
+	return parser
+}
+
 // 初始化SQL解析器base
 func newParserBase(sql string, indent ...int) ParserBase {
 	var base = ParserBase{
@@ -76,86 +157,9 @@ func (p *ParserBase) align(sql ...string) string {
 		return strings.Repeat(Blank, p.indent)
 	} else if str := sql[0]; len(str) <= p.indent {
 		return strings.Repeat(Blank, p.indent-len(str)) + str
-	} else if cut, _ := cutSql(str, Blank); len(cut) <= p.indent {
+	} else if cut, _ := cutString(str, Blank); len(cut) <= p.indent {
 		return strings.Repeat(Blank, p.indent-len(cut)) + str
 	} else {
 		return str
 	}
-}
-
-// 解析sql字符串
-func parseSelectSQL(sql string, indent ...int) *SelectParser {
-	// sql初始化
-	var parser = &SelectParser{
-		ParserBase: newParserBase(sql, indent...),
-	}
-
-	parser.prepare()      // 解析准备
-	parser.parseLimit()   // 解析limit
-	parser.parseOrderBy() // 解析order by
-	parser.parseFields()  // 解析字段
-	parser.parseTable()   // 解析主表
-	parser.parseJoins()   // 解析关联子表
-	parser.parseWhere()   // 解析where
-	parser.parseGroupBy() // 解析group By
-	parser.parseHaving()  // 解析having
-	parser.finish()       // 解析完成
-
-	return parser
-}
-
-func parseUpdateSQL(sql string, indent ...int) *UpdateSqlParser {
-	// sql初始化
-	var parser = &UpdateSqlParser{
-		ParserBase: newParserBase(sql, indent...),
-	}
-
-	parser.prepare()     // 解析准备
-	parser.parseTable()  // 解析主表
-	parser.parseFields() // 解析更新字段
-	parser.parseWhere()  // 解析查询条件
-	parser.finish()      // 解析完成
-
-	return parser
-}
-
-func parseDeleteSQL(sql string, indent ...int) *DeleteParser {
-	// sql初始化
-	var parser = &DeleteParser{
-		ParserBase: newParserBase(sql, indent...),
-	}
-
-	parser.prepare()    // 解析准备
-	parser.parseTable() // 解析主表
-	parser.parseWhere() // 解析查询条件
-	parser.finish()     // 解析完成
-
-	return parser
-}
-
-func parseInsertSQL(sql string, indent ...int) *InsertParser {
-	// sql初始化
-	var parser = &InsertParser{
-		ParserBase: newParserBase(sql, indent...),
-	}
-
-	parser.prepare()       // 解析准备
-	parser.parseTable()    // 解析主表
-	parser.extractFields() // 解析字段
-	parser.finish()        // 解析完成
-
-	return parser
-}
-
-func parseCreateSQL(sql string, indent ...int) *CreateParser {
-	// sql初始化
-	var parser = &CreateParser{
-		ParserBase: newParserBase(sql, indent...),
-	}
-
-	parser.prepare()    // 解析准备
-	parser.parseTable() // 解析主表
-	parser.finish()     // 解析完成
-
-	return parser
 }

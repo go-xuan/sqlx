@@ -6,8 +6,8 @@ import (
 
 // ConditionParser 查询条件解析
 type ConditionParser struct {
-	Type    string // or/and
-	Content string //
+	LogicalOperator string // 逻辑运算符
+	Content         string //
 }
 
 // JoinParser 关联表解析

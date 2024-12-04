@@ -24,7 +24,7 @@ func (p *InsertParser) parseTable() *InsertParser {
 		sql = sql[5:]
 	}
 	// 根据set关键字进行拆分
-	if index := indexOfSql(sql, LeftBracket); index >= 0 {
+	if index := indexOfString(sql, LeftBracket); index >= 0 {
 		p.Table = &TableParser{
 			Name: strings.TrimSpace(sql[:index-1]),
 		}
@@ -36,7 +36,7 @@ func (p *InsertParser) parseTable() *InsertParser {
 func (p *InsertParser) extractFields() *InsertParser {
 	sql := p.tempSql
 	// 根据set关键字进行拆分
-	if start, end := betweenOfSql(sql, LeftBracket, RightBracket); start >= 0 && end >= start {
+	if start, end := betweenOfString(sql, LeftBracket, RightBracket); start >= 0 && end >= start {
 		sql = sql[start+1 : end-1]
 		p.tempSql = sql[end+1:]
 	}

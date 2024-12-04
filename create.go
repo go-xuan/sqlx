@@ -24,12 +24,12 @@ func (p *CreateParser) parseTable() *CreateParser {
 		sql = sql[5:]
 	}
 	// 根据set关键字进行拆分
-	if index := keywordIndexOfSql(sql, WHERE); index >= 0 {
+	if index := firstIndexOfKeyword(sql, WHERE); index >= 0 {
 		p.tempSql = sql[index:]
 		sql = sql[:index]
 	}
 	var name, alias string
-	if index := indexOfSql(sql, Blank, 1); index >= 0 {
+	if index := indexOfString(sql, Blank, 1); index >= 0 {
 		name = sql[:index]
 		alias = extractAlias(sql[index+1:])
 	}

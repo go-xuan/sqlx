@@ -13,3 +13,7 @@ func TestSqlBeautifier(t *testing.T) {
 
 	fmt.Println(Parse(`update quanchao_test set name = 'quanchao', sss = 123 where id = 1 and d = true`).Beautify())
 }
+
+func TestSqlBeautify(t *testing.T) {
+
+}

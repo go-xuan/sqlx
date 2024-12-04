@@ -70,11 +70,11 @@ func (p *UpdateSqlParser) buildConditionSql() string {
 		for i, cond := range conditions {
 			if i > 0 {
 				sql.WriteString(NewLine)
-				if cond.Type == Empty {
+				if cond.LogicalOperator == Empty {
 					sql.WriteString(p.align(AND))
 					sql.WriteString(Blank)
 				} else {
-					sql.WriteString(p.align(cond.Type))
+					sql.WriteString(p.align(cond.LogicalOperator))
 					sql.WriteString(Blank)
 				}
 			}
@@ -95,12 +95,12 @@ func (p *UpdateSqlParser) parseTable() *UpdateSqlParser {
 		sql = sql[5:]
 	}
 	// 根据set关键字进行拆分
-	if index := keywordIndexOfSql(sql, SET); index >= 0 {
+	if index := firstIndexOfKeyword(sql, SET); index >= 0 {
 		p.tempSql = sql[index:]
 		sql = sql[:index]
 	}
 	var name, alias string
-	if index := indexOfSql(sql, Blank, 1); index >= 0 {
+	if index := indexOfString(sql, Blank, 1); index >= 0 {
 		name = sql[:index]
 		alias = extractAlias(sql[index+1:])
 	}
@@ -115,23 +115,23 @@ func (p *UpdateSqlParser) parseTable() *UpdateSqlParser {
 func (p *UpdateSqlParser) parseFields() *UpdateSqlParser {
 	sql := p.tempSql
 	// 根据where关键字进行拆分
-	if index := keywordIndexOfSql(sql, WHERE); index > 0 {
+	if index := firstIndexOfKeyword(sql, WHERE); index > 0 {
 		p.tempSql = sql[index:]
 		sql = sql[:index]
 	}
 	// 截取where关键字前面的sql片段
-	if index := keywordIndexOfSql(sql, SET); index >= 0 {
+	if index := firstIndexOfKeyword(sql, SET); index >= 0 {
 		sql = sql[index+4:]
-		var fieldList, lastField = splitIgnoreInBracket(sql, Comma)
+		var fieldList, lastField = splitExcludeInBracket(sql, Comma)
 		fieldList = append(fieldList, lastField)
 		var fields []*FieldParser
 		for _, field := range fieldList {
 			var name, value string
-			if eqi := indexOfSql(field, Equals); eqi >= 0 {
+			if eqi := indexOfString(field, Equals); eqi >= 0 {
 				name, value = field[:eqi], field[eqi+1:]
 			}
 			name, value = strings.TrimSpace(name), strings.TrimSpace(value)
-			if indexOfSql(name, ReplacePrefix) >= 0 {
+			if indexOfString(name, ReplacePrefix) >= 0 {
 				name = p.replacer.Replace(name)
 			}
 			fields = append(fields, &FieldParser{Name: name, Value: value})

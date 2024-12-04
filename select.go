@@ -37,20 +37,20 @@ func (p *SelectParser) Beautify() string {
 // 提取查询字段
 func (p *SelectParser) parseFields() *SelectParser {
 	sql := p.tempSql
-	if start, end := betweenOfSql(sql, SELECT, FROM); start >= 0 {
+	if start, end := betweenOfString(sql, SELECT, FROM); start >= 0 {
 		fieldsSql := sql[start+1 : end]
 		if end-start > 9 && fieldsSql[:8] == DISTINCT {
 			p.Distinct = true
 			fieldsSql = fieldsSql[9:]
 		}
 		// 判断是否有字段包含括号（子查询或者函数等内部可能会包含","逗号，从而影响字段拆分）
-		var sqlList, lastSql = splitIgnoreInBracket(fieldsSql, Comma)
+		var sqlList, lastSql = splitExcludeInBracket(fieldsSql, Comma)
 		sqlList = append(sqlList, lastSql)
 		var fields []*FieldParser
 		for _, fieldSql := range sqlList {
 			var name, alias string
 			fieldSql = strings.TrimSpace(fieldSql)
-			if i := keywordIndexOfSql(fieldSql, AS); i >= 0 {
+			if i := firstIndexOfKeyword(fieldSql, AS); i >= 0 {
 				name, alias = fieldSql[:i], fieldSql[i:]
 			} else if fieldSql[len(fieldSql)-1:] == RightBracket {
 				name = fieldSql
@@ -59,7 +59,7 @@ func (p *SelectParser) parseFields() *SelectParser {
 			} else {
 				name = fieldSql
 			}
-			if indexOfSql(name, ReplacePrefix) >= 0 {
+			if indexOfString(name, ReplacePrefix) >= 0 {
 				name = p.replacer.Replace(name)
 			}
 			fields = append(fields, &FieldParser{Name: name, Alias: alias})
@@ -81,13 +81,13 @@ func (p *SelectParser) parseJoins() *SelectParser {
 	sql := p.tempSql
 
 	var sqlList []string
-	sqlList, sql = splitIgnoreInBracket(sql, JOIN)
+	sqlList, sql = splitExcludeInBracket(sql, JOIN)
 	var lastJoin string
-	if x, y := betweenOfSql(sql, LeftBracket, RightBracket); x == 2 {
+	if x, y := betweenOfString(sql, LeftBracket, RightBracket); x == 2 {
 		lastJoin, sql = sql[:y], sql[y:]
 	}
-	if _, i := containsKeywords(sql, WHERE, GroupBy, OrderBy, LIMIT); i >= 0 {
-		lastJoin, sql = lastJoin+sql[:i], sql[i:]
+	if _, index := containsKeywords(sql, WHERE, GroupBy, OrderBy, LIMIT); index >= 0 {
+		lastJoin, sql = lastJoin+sql[:index], sql[index:]
 	} else {
 		lastJoin, sql = lastJoin+sql, Empty
 	}
@@ -106,12 +106,13 @@ func (p *SelectParser) parseJoins() *SelectParser {
 				}
 				join.Type = joinType
 
-				if a := lastIndexOfKeywords(joinSql, LEFT, RIGHT, INNER, OUTER); a >= 0 {
-					joinType = strings.TrimSpace(joinSql[a:])
-					joinSql = joinSql[:a-1]
+				if index := lastIndexOfSqlKeys(joinSql, LEFT, RIGHT, INNER, OUTER); index >= 0 {
+					joinType = strings.TrimSpace(joinSql[index:])
+					joinSql = joinSql[:index-1]
 				}
-				if a := keywordIndexOfSql(joinSql, ON, -1); a >= 0 {
-					join.On, joinSql = joinSql[a+3:], joinSql[:a-1]
+
+				if index := lastIndexOfKeyword(joinSql, ON); index >= 0 {
+					join.On, joinSql = joinSql[index+3:], joinSql[:index-1]
 				}
 
 				join.Table, _ = extractTable(joinSql, space+6)
@@ -130,10 +131,10 @@ func (p *SelectParser) parseWhere() *SelectParser {
 	return p
 }
 
-// 提取group By
+// 提取group by
 func (p *SelectParser) parseGroupBy() *SelectParser {
 	sql := p.tempSql
-	if index := keywordIndexOfSql(sql, GroupBy); index >= 0 {
+	if index := firstIndexOfKeyword(sql, GroupBy); index >= 0 {
 		var groupBySql string
 		if _, j := containsKeywords(sql, HAVING, OrderBy, LIMIT); j >= 0 {
 			groupBySql, sql = sql[index+9:j], sql[j:]
@@ -149,7 +150,7 @@ func (p *SelectParser) parseGroupBy() *SelectParser {
 // 提取having
 func (p *SelectParser) parseHaving() *SelectParser {
 	sql := p.tempSql
-	if index := keywordIndexOfSql(sql, HAVING); index >= 0 {
+	if index := firstIndexOfKeyword(sql, HAVING); index >= 0 {
 		sql = sql[index+6:]
 	}
 	var havingSql string
@@ -158,7 +159,7 @@ func (p *SelectParser) parseHaving() *SelectParser {
 	} else {
 		havingSql, sql = sql, Empty
 	}
-	var sqlList, lastSql = splitIgnoreInBracket(havingSql, AND)
+	var sqlList, lastSql = splitExcludeInBracket(havingSql, AND)
 	sqlList = append(sqlList, lastSql)
 	if len(sqlList) > 0 {
 		var conditions []*ConditionParser
@@ -174,9 +175,9 @@ func (p *SelectParser) parseHaving() *SelectParser {
 // 提取order by
 func (p *SelectParser) parseOrderBy() *SelectParser {
 	sql := p.tempSql
-	if index := keywordIndexOfSql(sql, OrderBy, -1); index > 0 {
+	if index := lastIndexOfKeyword(sql, OrderBy); index > 0 {
 		var orderBySql string
-		if j := keywordIndexOfSql(sql, RightBracket, -1); index > j {
+		if j := indexOfString(sql, RightBracket, -1); index > j {
 			orderBySql, sql = sql[index+9:], sql[:index-1]
 		}
 		if orderBySql != Empty {
@@ -190,8 +191,8 @@ func (p *SelectParser) parseOrderBy() *SelectParser {
 // 提取limit
 func (p *SelectParser) parseLimit() *SelectParser {
 	sql := p.tempSql
-	i := keywordIndexOfSql(sql, LIMIT, -1)
-	j := keywordIndexOfSql(sql, RightBracket, -1)
+	i := lastIndexOfKeyword(sql, LIMIT)
+	j := indexOfString(sql, RightBracket, -1)
 	if i > 0 && i > j {
 		p.Limit, sql = sql[i+6:], sql[:i]
 	}
@@ -270,42 +271,42 @@ func (p *SelectParser) buildFromSql() string {
 	return sql.String()
 }
 
-func (p *SelectParser) buildConditionSql(in string) string {
+func (p *SelectParser) buildConditionSql(key string) string {
 	var conditions []*ConditionParser
-	switch in {
+	switch key {
 	case WHERE:
 		conditions = p.Where
 	case HAVING:
 		conditions = p.Having
 	default:
-		in = WHERE
+		key = WHERE
 		conditions = p.Where
 	}
 	sql := strings.Builder{}
 	if len(conditions) > 0 {
 		sql.WriteString(NewLine)
-		sql.WriteString(p.align(in))
+		sql.WriteString(p.align(key))
 		sql.WriteString(Blank)
-		for i, cond := range conditions {
-			if i > 0 {
+		for index, condition := range conditions {
+			if index > 0 {
 				sql.WriteString(NewLine)
-				if cond.Type == Empty {
+				if condition.LogicalOperator == Empty {
 					sql.WriteString(p.align(AND))
 					sql.WriteString(Blank)
 				} else {
-					sql.WriteString(p.align(cond.Type))
+					sql.WriteString(p.align(condition.LogicalOperator))
 					sql.WriteString(Blank)
 				}
 			}
-			sql.WriteString(cond.Content)
+			sql.WriteString(condition.Content)
 		}
 	}
 	return sql.String()
 }
 
-func (p *SelectParser) buildGroupOrderSql(in string) string {
+func (p *SelectParser) buildGroupOrderSql(key string) string {
 	var values []string
-	switch in {
+	switch key {
 	case GROUP:
 		values = p.GroupBy
 	case ORDER:
@@ -314,7 +315,7 @@ func (p *SelectParser) buildGroupOrderSql(in string) string {
 	sql := strings.Builder{}
 	if len(values) > 0 {
 		sql.WriteString(NewLine)
-		sql.WriteString(p.align(in))
+		sql.WriteString(p.align(key))
 		sql.WriteString(Blank)
 		sql.WriteString(By)
 		sql.WriteString(Blank)
