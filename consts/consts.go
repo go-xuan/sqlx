@@ -1,4 +1,4 @@
-package sqlx
+package consts
 
 // symbol
 const (
@@ -7,6 +7,7 @@ const (
 	LeftBracket   = "("
 	RightBracket  = ")"
 	Comma         = ","
+	Semicolon     = ";"
 	NewLine       = "\n"
 	Equals        = "="
 	ReplacePrefix = "value@"
@@ -20,6 +21,8 @@ const (
 	DELETE    = "delete"
 	INSERT    = "insert"
 	INTO      = "into"
+	Value     = "value"
+	Values    = "values"
 	FROM      = "from"
 	WHERE     = "where"
 	SET       = "set"
