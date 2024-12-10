@@ -204,8 +204,9 @@ func (x *Select) parseOrderBy() *Select {
 	sql := x.tempSql
 	if index := utils.LastIndexOfKeyword(sql, consts.OrderBy); index > 0 {
 		var orderBySql string
-		if i := utils.IndexOfString(sql, consts.RightBracket, -1); i > i {
-			orderBySql, sql = sql[i+9:], sql[:i-1]
+		if i := utils.IndexOfString(sql, consts.RightBracket, -1); i < index {
+			// 排除子查询中的order by，只取主查询的order by
+			orderBySql, sql = sql[index+9:], sql[:index-1]
 		}
 		if orderBySql != consts.Empty {
 			x.OrderBy = strings.Split(orderBySql, consts.Comma)
