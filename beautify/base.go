@@ -60,30 +60,32 @@ func (b *Base) align(sql ...string) string {
 
 // ExtractWhere 提取条件
 func ExtractWhere(sql string) ([]*Condition, string) {
-	if sql == "" {
-		return nil, ""
-	}
-	// 去除where
-	if index := utils.FirstIndexOfKeyword(sql, consts.WHERE); index >= 0 {
-		sql = sql[index+5:]
-	}
-	var whereSql string
-	if _, index := utils.ContainsKeywords(sql, consts.GroupBy, consts.OrderBy, consts.LIMIT); index >= 0 {
-		whereSql, sql = sql[:index], sql[index:]
-	} else {
-		whereSql, sql = sql, consts.Empty
-	}
-	list, last := utils.SplitExcludeInBracket(whereSql, consts.AND)
-	list = append(list, last)
-	var conditions []*Condition
-	if len(list) > 0 {
-		for _, condition := range list {
-			conditions = append(conditions, &Condition{
-				Content: strings.TrimSpace(condition),
-			})
+	if sql != "" {
+		if index := utils.FirstIndexOfKeyword(sql, consts.WHERE); index >= 0 {
+			// 去除where
+			sql = sql[index+5:]
+
+			var whereSql string
+			if _, i := utils.ContainsKeywords(sql, consts.GroupBy, consts.OrderBy, consts.LIMIT); i >= 0 {
+				whereSql, sql = sql[:i], sql[i:]
+			} else {
+				whereSql, sql = sql, consts.Empty
+			}
+			
+			list, last := utils.SplitExcludeInBracket(whereSql, consts.AND)
+			list = append(list, last)
+			var conditions []*Condition
+			if len(list) > 0 {
+				for _, condition := range list {
+					conditions = append(conditions, &Condition{
+						Content: strings.TrimSpace(condition),
+					})
+				}
+			}
+			return conditions, sql
 		}
 	}
-	return conditions, sql
+	return nil, sql
 }
 
 // Condition 查询条件解析
