@@ -62,8 +62,8 @@ func (x *Select) Beautify() string {
 // 提取查询字段
 func (x *Select) parseFields() *Select {
 	sql := x.tempSql
-	if form, to := utils.BetweenOfString(sql, consts.SELECT, consts.FROM); form >= 0 {
-		fieldsSql := sql[form+1 : to]
+	if form, to := utils.BetweenOfString(sql, consts.SELECT+consts.Blank, consts.Blank+consts.FROM+consts.Blank); form >= 0 {
+		fieldsSql := sql[form+7 : to]
 		if to-form > 9 && fieldsSql[:8] == consts.DISTINCT {
 			x.Distinct = true
 			fieldsSql = fieldsSql[9:]
@@ -108,7 +108,7 @@ func (x *Select) parseJoins() *Select {
 	var joinSqlList []string
 	joinSqlList, sql = utils.SplitExcludeInBracket(sql, consts.JOIN)
 	var lastJoin string
-	if from, to := utils.BetweenOfString(sql, consts.LeftBracket, consts.RightBracket); from == 2 {
+	if from, to := utils.BetweenOfString(sql, consts.LeftBracket, consts.RightBracket); from == 1 {
 		lastJoin, sql = sql[:to], sql[to:]
 	}
 	if _, index := utils.ContainsKeywords(sql, consts.WHERE, consts.GroupBy, consts.OrderBy, consts.LIMIT); index >= 0 {
@@ -131,8 +131,8 @@ func (x *Select) parseJoins() *Select {
 				}
 				join.Type = joinType
 
-				if index := utils.LastIndexOfSqlKeys(joinSql, consts.LEFT, consts.RIGHT, consts.INNER, consts.OUTER); index >= 0 {
-					joinType = strings.TrimSpace(joinSql[index:])
+				if hit, index := utils.LastIndexOfKeys(joinSql, consts.LEFT, consts.RIGHT, consts.INNER, consts.OUTER); index >= 0 {
+					joinType = hit
 					joinSql = joinSql[:index-1]
 				}
 
@@ -153,7 +153,7 @@ func (x *Select) parseJoins() *Select {
 // 提取查询条件
 func (x *Select) parseWhere() *Select {
 	if sql := x.tempSql; sql != "" {
-		x.Where, x.tempSql = ExtractWhere(sql)
+		x.Where, x.tempSql = ExtractWhere(sql, x.indent)
 	}
 	return x
 }
@@ -190,7 +190,7 @@ func (x *Select) parseHaving() *Select {
 		if len(list) > 0 {
 			var conditions []*Condition
 			for _, conditionSql := range list {
-				conditions = append(conditions, &Condition{Content: strings.TrimSpace(conditionSql)})
+				conditions = append(conditions, &Condition{Value: strings.TrimSpace(conditionSql)})
 			}
 			x.Having = conditions
 		}
@@ -274,7 +274,7 @@ func (x *Select) beautifyFrom() string {
 	sql.WriteString(consts.NewLine)
 	sql.WriteString(x.align(consts.FROM))
 	sql.WriteString(consts.Blank)
-	sql.WriteString(x.Table.AliasSQL(true))
+	sql.WriteString(x.Table.beautify(true))
 	for _, join := range x.Joins {
 		sql.WriteString(consts.NewLine)
 		if join.Type != consts.Empty {
@@ -285,7 +285,7 @@ func (x *Select) beautifyFrom() string {
 			sql.WriteString(x.align(consts.JOIN))
 		}
 		sql.WriteString(consts.Blank)
-		sql.WriteString(join.Table.AliasSQL(true))
+		sql.WriteString(join.Table.beautify(true))
 		sql.WriteString(consts.NewLine)
 		sql.WriteString(x.align(consts.ON))
 		sql.WriteString(consts.Blank)
@@ -300,18 +300,11 @@ func (x *Select) beautifyWhere() string {
 		sql.WriteString(consts.NewLine)
 		sql.WriteString(x.align(consts.WHERE))
 		sql.WriteString(consts.Blank)
-		for index, condition := range conditions {
-			if index > 0 {
+		for i, condition := range conditions {
+			if i > 0 {
 				sql.WriteString(consts.NewLine)
-				if condition.LogicalOperator == consts.Empty {
-					sql.WriteString(x.align(consts.AND))
-					sql.WriteString(consts.Blank)
-				} else {
-					sql.WriteString(x.align(condition.LogicalOperator))
-					sql.WriteString(consts.Blank)
-				}
 			}
-			sql.WriteString(condition.Content)
+			sql.WriteString(condition.beautify())
 		}
 		return sql.String()
 	}
@@ -324,18 +317,11 @@ func (x *Select) beautifyHaving() string {
 		sql.WriteString(consts.NewLine)
 		sql.WriteString(x.align(consts.HAVING))
 		sql.WriteString(consts.Blank)
-		for index, condition := range conditions {
-			if index > 0 {
+		for i, condition := range conditions {
+			if i > 0 {
 				sql.WriteString(consts.NewLine)
-				if condition.LogicalOperator == consts.Empty {
-					sql.WriteString(x.align(consts.AND))
-					sql.WriteString(consts.Blank)
-				} else {
-					sql.WriteString(x.align(condition.LogicalOperator))
-					sql.WriteString(consts.Blank)
-				}
 			}
-			sql.WriteString(condition.Content)
+			sql.WriteString(condition.beautify())
 		}
 		return sql.String()
 	}

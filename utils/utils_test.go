@@ -10,18 +10,17 @@ import (
 func TestKeywordIndexOfSql(t *testing.T) {
 	sql := "select 1 from abc where band=1 and (a=1 and band =2) and c=3 and d=4"
 	fmt.Println(sql)
-	if index := IndexOfKeyword(sql, "and", 4); index != -1 {
+	if index := IndexOfKeyword(sql, consts.AND, 4); index != -1 {
 		fmt.Println(sql[index:])
 		fmt.Println(index)
 	}
 
-	if indices := IndicesOfKeyword(sql, "and", 4); len(indices) > 0 {
+	if indices := IndicesOfKeyword(sql, consts.AND, 4); len(indices) > 0 {
 		fmt.Println(indices)
 		for _, index := range indices {
 			fmt.Println(sql[index:])
 		}
 	}
-
 }
 
 func TestSplitExcludeInBracket(t *testing.T) {
@@ -35,6 +34,5 @@ func TestSplitExcludeInBracket(t *testing.T) {
 		fmt.Println(last)
 		fmt.Println(strings.Trim(last, "() "))
 		fmt.Println(strings.Fields(last))
-
 	}
 }

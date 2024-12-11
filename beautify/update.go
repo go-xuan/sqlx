@@ -47,7 +47,7 @@ func (x *Update) beautifyUpdate() string {
 	var sql = strings.Builder{}
 	sql.WriteString(consts.UPDATE)
 	sql.WriteString(consts.Blank)
-	sql.WriteString(x.Table.AliasSQL())
+	sql.WriteString(x.Table.beautify())
 	sql.WriteString(consts.NewLine)
 	return sql.String()
 }
@@ -93,15 +93,15 @@ func (x *Update) beautifyCondition() string {
 		for i, cond := range conditions {
 			if i > 0 {
 				sql.WriteString(consts.NewLine)
-				if cond.LogicalOperator == consts.Empty {
+				if cond.AndOr == consts.Empty {
 					sql.WriteString(x.align(consts.AND))
 					sql.WriteString(consts.Blank)
 				} else {
-					sql.WriteString(x.align(cond.LogicalOperator))
+					sql.WriteString(x.align(cond.AndOr))
 					sql.WriteString(consts.Blank)
 				}
 			}
-			sql.WriteString(cond.Content)
+			sql.WriteString(cond.Value)
 		}
 	}
 	return sql.String()
@@ -167,7 +167,7 @@ func (x *Update) parseFields() *Update {
 // 提取查询条件
 func (x *Update) parseWhere() *Update {
 	if sql := x.tempSql; sql != "" {
-		x.Where, x.tempSql = ExtractWhere(sql)
+		x.Where, x.tempSql = ExtractWhere(sql, x.indent)
 	}
 	return x
 }

@@ -48,7 +48,7 @@ func (x *Insert) Beautify() string {
 func (x *Insert) beautifyInsert() string {
 	var sql = strings.Builder{}
 	sql.WriteString("insert into ")
-	sql.WriteString(x.Table.AliasSQL())
+	sql.WriteString(x.Table.beautify())
 	sql.WriteString(consts.NewLine)
 	return sql.String()
 }
