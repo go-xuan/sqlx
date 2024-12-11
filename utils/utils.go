@@ -70,38 +70,41 @@ func SplitValuesSql(valuesSql string) []string {
 }
 
 // SplitExcludeInBracket 根据分隔符进行拆分但是排除括号内的分隔符
-func SplitExcludeInBracket(sql, sep string) ([]string, string) {
+func SplitExcludeInBracket(sql, key string) ([]string, string) {
 	var slice []string
-	// l：总长度  k:sep长度  m:上个拆分点  n:括号个数
-	var l, k, m, n = len(sql), len(sep), 0, 0
-	for i := 0; i < l-k; i++ {
-		if sql[i] == sep[0] && sql[i:i+k] == sep {
-			if n == 0 { // 括号对全部抵消才是有效的分割位
-				slice = append(slice, sql[m:i])
-				m = i + k // 将当前拆分点后移一个sep长度
+	var sl, kl, offset, brackets = len(sql), len(key), 0, 0
+	for i := 0; i < sl-kl; i++ {
+		if sql[i] == key[0] && sql[i:i+kl] == key {
+			// 当前位置前面的括号全部抵消才表示是有效命中
+			if brackets == 0 {
+				slice = append(slice, sql[offset:i])
+				offset = i + kl // 将当前拆分点后移一个sep长度
 			}
 		} else if sql[i:i+1] == consts.LeftBracket {
-			n++ // 括号加一
-		} else if sql[i:i+1] == consts.RightBracket && n > 0 {
-			n-- // 抵消一对括号
+			brackets++ // 括号加一
+		} else if sql[i:i+1] == consts.RightBracket && brackets > 0 {
+			brackets-- // 抵消一对括号
 		}
 	}
-	return slice, sql[m:]
+	return slice, sql[offset:]
 }
 
-// IndexExcludeInBracket 获取关键字下标但排除略括号内的关键字
-func IndexExcludeInBracket(sql, key string) int {
-	// l：总长度  k:关键字长度   n:括号对个数
-	var l, k, n = len(sql), len(key), 0
-	for i := 0; i < l-k; i++ {
-		if sql[i] == key[0] && sql[i:i+k] == key {
-			if n == 0 { // 括号对全部抵则是有效关键字
+// IndexExcludeBrackets 获取关键字下标但排除略括号内的关键字
+func IndexExcludeBrackets(sql, key string, pure bool) int {
+	var sl, kl, brackets = len(sql), len(key), 0
+	for i := 0; i < sl-kl; i++ {
+		if sql[i] == key[0] && sql[i:i+kl] == key {
+			// 当前位置前面的括号全部抵消才表示是有效命中
+			if brackets == 0 {
+				if pure && !HasAdjacent(sql, key, consts.Blank, i) {
+					continue
+				}
 				return i
 			}
 		} else if sql[i:i+1] == consts.LeftBracket {
-			n++ // 括号加一
-		} else if sql[i:i+1] == consts.RightBracket && n > 0 {
-			n-- // 抵消一对括号
+			brackets++ // 括号加一
+		} else if sql[i:i+1] == consts.RightBracket && brackets > 0 {
+			brackets-- // 抵消一对括号
 		}
 	}
 	return -1
@@ -122,14 +125,30 @@ func ContainsKeywords(sql string, keys ...string) (string, int) {
 	return hit, index
 }
 
-// LastIndexOfSqlKeys 获取多个关键字中任一关键字最后命中下标
-func LastIndexOfSqlKeys(sql string, keys ...string) int {
+// LastIndexOfKeys 获取多个关键字中任一关键字最后命中下标
+func LastIndexOfKeys(sql string, keys ...string) (string, int) {
+	var hit, index = "", -1
 	for _, key := range keys {
-		if index := LastIndexOfKeyword(sql, key); index >= 0 {
-			return index
+		if i := LastIndexOfKeyword(sql, key); i >= 0 && i > index {
+			hit, index = key, i
 		}
 	}
-	return -1
+	return hit, index
+}
+
+// FirstIndexOfKeys 获取多个关键字中任一关键字首次命中下标
+func FirstIndexOfKeys(sql string, keys ...string) (string, int) {
+	var max = len(sql) - 1
+	var hit, index = "", max
+	for _, key := range keys {
+		if i := FirstIndexOfKeyword(sql, key); i >= 0 && i < index {
+			index = i
+		}
+	}
+	if index == max {
+		index = -1
+	}
+	return hit, index
 }
 
 // IndicesOfKeyword 获取所有下标, x：命中数量
@@ -200,18 +219,13 @@ func IndexOfKeywordReverse(sql, key string, position int) int {
 
 // FirstIndexOfKeyword 获取sql中关键字首次出现的下标
 func FirstIndexOfKeyword(sql, key string) int {
+	//kl: key字符长度 loop:继续循环 index：命中下标
 	kl, loop, index := len(key), true, 0
 	for loop {
 		if newIndex := IndexOfString(sql, key, 1); newIndex >= 0 {
-			sl := len(sql)
-			if newIndex == 0 && sql[kl:kl+1] == consts.Blank {
-				index, loop = index+newIndex, false
-			} else if newIndex == sl-kl && sql[newIndex-1:newIndex] == consts.Blank {
-				index, loop = index+newIndex, false
-			} else if sql[newIndex-1:newIndex] == consts.Blank && sql[newIndex+kl:newIndex+kl+1] == consts.Blank {
+			if HasAdjacent(sql, key, consts.Blank, newIndex) {
 				index, loop = index+newIndex, false
 			} else {
-				// 当前index无效则缩减原sql继续loop
 				index = newIndex + kl
 				sql = sql[index:]
 			}
@@ -224,18 +238,12 @@ func FirstIndexOfKeyword(sql, key string) int {
 
 // LastIndexOfKeyword 获取sql中关键字末次出现的下标
 func LastIndexOfKeyword(sql, key string) int {
-	kl, loop, index := len(key), true, 0
+	loop, index := true, 0
 	for loop {
 		if newIndex := IndexOfString(sql, key, -1); newIndex >= 0 {
-			sl := len(sql)
-			if newIndex == 0 && sql[kl:kl+1] == consts.Blank {
-				index, loop = index+newIndex, false
-			} else if newIndex == sl-kl && sql[newIndex-1:newIndex] == consts.Blank {
-				index, loop = index+newIndex, false
-			} else if sql[newIndex-1:newIndex] == consts.Blank && sql[newIndex+kl:newIndex+kl+1] == consts.Blank {
+			if HasAdjacent(sql, key, consts.Blank, newIndex) {
 				index, loop = index+newIndex, false
 			} else {
-				// 当前index无效则缩减原sql继续loop
 				sql = sql[:newIndex]
 			}
 		} else {
@@ -243,6 +251,18 @@ func LastIndexOfKeyword(sql, key string) int {
 		}
 	}
 	return index
+}
+
+// HasAdjacent 判断目标kew在文本中当前位置是否有相邻字符
+func HasAdjacent(str, key, adjacent string, index int) bool {
+	sl, kl, al := len(str), len(key), len(adjacent)
+	if index == 0 {
+		return str[kl:kl+al] == adjacent
+	} else if index == sl-kl {
+		return str[index-al:index] == adjacent
+	} else {
+		return str[index-al:index] == adjacent && str[index+kl:index+kl+al] == adjacent
+	}
 }
 
 // BetweenOfString 获取起始字符首次出现和结尾字符末次出现的下标
@@ -256,30 +276,30 @@ func BetweenOfString(str, start, end string) (from, to int) {
 		}
 		return
 	}
-	var l, m, n = len(str), len(start), len(end)
-	if m > l || n > l {
+	var l, sl, el = len(str), len(start), len(end)
+	if sl > l || el > l {
 		return
 	}
 	// x:start个数  y:end个数
 	var x, y int
 	for i := 0; i < l; i++ {
 		if str[i] == start[0] {
-			if str[i:i+m] == start {
+			if str[i:i+sl] == start {
 				x++
 				if x == 1 {
-					from = i + m
+					from = i
 				}
-				i = i + m - 1
+				i = i + sl - 1
 			}
 		}
 		if str[i] == end[0] {
-			if str[i:i+n] == end {
+			if str[i:i+el] == end {
 				y++
 				if y == x || x == 1 {
 					to = i
 					break
 				}
-				i = i + n - 1
+				i = i + el - 1
 			}
 		}
 	}
@@ -339,6 +359,19 @@ func IndexOfString(sql, str string, position ...int) int {
 		}
 	}
 	return -1
+}
+
+func TrimBrackets(sql string) string {
+	var loop = true
+	for loop {
+		var max = len(sql) - 1
+		if from, to := BetweenOfString(sql, consts.LeftBracket, consts.RightBracket); from == 0 && to == max {
+			sql = sql[from+1 : to]
+		} else {
+			loop = false
+		}
+	}
+	return sql
 }
 
 // CutString 分割字符串（reverse=true从右往左）

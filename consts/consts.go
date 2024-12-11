@@ -6,10 +6,12 @@ const (
 	Blank         = " "
 	LeftBracket   = "("
 	RightBracket  = ")"
+	Bracket       = "()"
 	Comma         = ","
 	Semicolon     = ";"
 	NewLine       = "\n"
 	Equals        = "="
+	NotEquals     = "!="
 	ReplacePrefix = "value@"
 )
 
@@ -43,6 +45,9 @@ const (
 	ON        = "on"
 	OR        = "or"
 	IN        = "in"
+	NotIn     = "not in"
+	IS        = "is"
+	IsNot     = "is not"
 	NOT       = "not"
 	LIKE      = "like"
 	By        = "by"

@@ -63,7 +63,7 @@ func (x *Delete) parseTable() *Delete {
 // 提取查询条件
 func (x *Delete) parseWhere() *Delete {
 	if sql := x.tempSql; sql != "" {
-		x.Where, x.tempSql = ExtractWhere(sql)
+		x.Where, x.tempSql = ExtractWhere(sql, x.indent)
 	}
 	return x
 }
