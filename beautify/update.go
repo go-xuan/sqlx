@@ -48,7 +48,7 @@ func (x *Update) beautifyUpdate() string {
 	sql.WriteString(consts.UPDATE)
 	sql.WriteString(consts.Blank)
 	sql.WriteString(x.Table.beautify())
-	sql.WriteString(consts.NewLine)
+	sql.WriteString(consts.NextLine)
 	return sql.String()
 }
 
@@ -69,13 +69,13 @@ func (x *Update) beautifyFields() string {
 				sql.WriteString(x.align(consts.SET))
 			} else {
 				sql.WriteString(consts.Comma)
-				sql.WriteString(consts.NewLine)
+				sql.WriteString(consts.NextLine)
 				sql.WriteString(x.align())
 			}
 			sql.WriteString(consts.Blank)
 			sql.WriteString(field.Name)
 			sql.WriteString(strings.Repeat(consts.Blank, maxLen-len(field.Name)+1))
-			sql.WriteString(consts.Equals)
+			sql.WriteString(consts.EQ)
 			sql.WriteString(consts.Blank)
 			sql.WriteString(field.Value)
 			i++
@@ -87,12 +87,12 @@ func (x *Update) beautifyFields() string {
 func (x *Update) beautifyCondition() string {
 	sql := strings.Builder{}
 	if conditions := x.Where; len(conditions) > 0 {
-		sql.WriteString(consts.NewLine)
+		sql.WriteString(consts.NextLine)
 		sql.WriteString(x.align(consts.WHERE))
 		sql.WriteString(consts.Blank)
 		for i, cond := range conditions {
 			if i > 0 {
-				sql.WriteString(consts.NewLine)
+				sql.WriteString(consts.NextLine)
 				if cond.AndOr == consts.Empty {
 					sql.WriteString(x.align(consts.AND))
 					sql.WriteString(consts.Blank)
@@ -150,7 +150,7 @@ func (x *Update) parseFields() *Update {
 		var fields []*Field
 		for _, field := range list {
 			var name, value string
-			if eqi := utils.IndexOfString(field, consts.Equals); eqi >= 0 {
+			if eqi := utils.IndexOfString(field, consts.EQ); eqi >= 0 {
 				name, value = field[:eqi], field[eqi+1:]
 			}
 			name, value = strings.TrimSpace(name), strings.TrimSpace(value)
@@ -167,7 +167,7 @@ func (x *Update) parseFields() *Update {
 // 提取查询条件
 func (x *Update) parseWhere() *Update {
 	if sql := x.tempSql; sql != "" {
-		x.Where, x.tempSql = ExtractWhere(sql, x.indent)
+		x.Where, x.tempSql = ExtractWhere(sql)
 	}
 	return x
 }

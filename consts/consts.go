@@ -6,13 +6,17 @@ const (
 	Blank         = " "
 	LeftBracket   = "("
 	RightBracket  = ")"
-	Bracket       = "()"
 	Comma         = ","
 	Semicolon     = ";"
-	NewLine       = "\n"
-	Equals        = "="
-	NotEquals     = "!="
+	NextLine      = "\n"
+	EQ            = "="
+	NE            = "!="
+	LT            = "<"
+	GT            = ">"
+	LE            = "<="
+	GE            = ">="
 	ReplacePrefix = "value@"
+	ReplaceSuffix = "@"
 )
 
 // keyword
