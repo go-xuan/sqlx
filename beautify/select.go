@@ -44,6 +44,9 @@ type Select struct {
 
 // Beautify SQL美化输出
 func (x *Select) Beautify() string {
+	if x.simple {
+		return x.originSql
+	}
 	var sql = strings.Builder{}
 	sql.WriteString(x.beautifySelect())
 	sql.WriteString(x.beautifyFrom())
@@ -64,7 +67,7 @@ func (x *Select) parseFields() *Select {
 	sql := x.tempSql
 	if form, to := utils.BetweenOfString(sql, consts.SELECT+consts.Blank, consts.Blank+consts.FROM+consts.Blank); form >= 0 {
 		fieldsSql := sql[form+7 : to]
-		if to-form > 9 && fieldsSql[:8] == consts.DISTINCT {
+		if to-form > 16 && fieldsSql[:8] == consts.DISTINCT {
 			x.Distinct = true
 			fieldsSql = fieldsSql[9:]
 		}
@@ -153,7 +156,7 @@ func (x *Select) parseJoins() *Select {
 // 提取查询条件
 func (x *Select) parseWhere() *Select {
 	if sql := x.tempSql; sql != "" {
-		x.Where, x.tempSql = ExtractWhere(sql, x.indent)
+		x.Where, x.tempSql = ExtractWhere(sql)
 	}
 	return x
 }
@@ -168,7 +171,11 @@ func (x *Select) parseGroupBy() *Select {
 		} else {
 			groupBySql, sql = sql, consts.Empty
 		}
-		x.GroupBy = strings.Split(groupBySql, consts.Comma)
+		groupBys := strings.Split(groupBySql, consts.Comma)
+		for i := range groupBys {
+			groupBys[i] = strings.TrimSpace(groupBys[i])
+		}
+		x.GroupBy = groupBys
 	}
 	x.tempSql = sql
 	return x
@@ -185,15 +192,7 @@ func (x *Select) parseHaving() *Select {
 		} else {
 			havingSql, sql = sql, consts.Empty
 		}
-		list, last := utils.SplitExcludeInBracket(havingSql, consts.AND)
-		list = append(list, last)
-		if len(list) > 0 {
-			var conditions []*Condition
-			for _, conditionSql := range list {
-				conditions = append(conditions, &Condition{Value: strings.TrimSpace(conditionSql)})
-			}
-			x.Having = conditions
-		}
+		x.Having = NewConditions(havingSql)
 	}
 	x.tempSql = sql
 	return x
@@ -239,11 +238,11 @@ func (x *Select) beautifySelect() string {
 		sql.WriteString(consts.Blank)
 		space += 9
 	}
-	var maxLen, aliasNum int
+	var fieldAlign, aliasNum int
 	for _, field := range x.Fields {
 		y := len(field.Name)
-		if maxLen < y {
-			maxLen = y
+		if fieldAlign < y {
+			fieldAlign = y
 		}
 		if field.Alias != consts.Empty {
 			aliasNum++
@@ -254,15 +253,15 @@ func (x *Select) beautifySelect() string {
 		if i > 0 {
 			sql.WriteString(consts.Comma)
 			if aliasNum > 0 || fieldNum >= 6 {
-				sql.WriteString(consts.NewLine)
-				sql.WriteString(strings.Repeat(consts.Blank, x.indent+space))
+				sql.WriteString(consts.NextLine)
+				sql.WriteString(Align(x.indent + space))
 			} else {
 				sql.WriteString(consts.Blank)
 			}
 		}
 		sql.WriteString(field.Name)
 		if field.Alias != consts.Empty {
-			sql.WriteString(strings.Repeat(consts.Blank, maxLen-len(field.Name)))
+			sql.WriteString(Align(fieldAlign - len(field.Name)))
 			sql.WriteString(field.Alias)
 		}
 	}
@@ -271,12 +270,12 @@ func (x *Select) beautifySelect() string {
 
 func (x *Select) beautifyFrom() string {
 	sql := strings.Builder{}
-	sql.WriteString(consts.NewLine)
+	sql.WriteString(consts.NextLine)
 	sql.WriteString(x.align(consts.FROM))
 	sql.WriteString(consts.Blank)
 	sql.WriteString(x.Table.beautify(true))
 	for _, join := range x.Joins {
-		sql.WriteString(consts.NewLine)
+		sql.WriteString(consts.NextLine)
 		if join.Type != consts.Empty {
 			sql.WriteString(x.align(join.Type))
 			sql.WriteString(consts.Blank)
@@ -286,7 +285,7 @@ func (x *Select) beautifyFrom() string {
 		}
 		sql.WriteString(consts.Blank)
 		sql.WriteString(join.Table.beautify(true))
-		sql.WriteString(consts.NewLine)
+		sql.WriteString(consts.NextLine)
 		sql.WriteString(x.align(consts.ON))
 		sql.WriteString(consts.Blank)
 		sql.WriteString(join.On)
@@ -297,14 +296,14 @@ func (x *Select) beautifyFrom() string {
 func (x *Select) beautifyWhere() string {
 	if conditions := x.Where; len(conditions) > 0 {
 		sql := strings.Builder{}
-		sql.WriteString(consts.NewLine)
+		sql.WriteString(consts.NextLine)
 		sql.WriteString(x.align(consts.WHERE))
 		sql.WriteString(consts.Blank)
 		for i, condition := range conditions {
 			if i > 0 {
-				sql.WriteString(consts.NewLine)
+				sql.WriteString(consts.NextLine)
 			}
-			sql.WriteString(condition.beautify())
+			sql.WriteString(condition.beautify(x.indent))
 		}
 		return sql.String()
 	}
@@ -314,14 +313,14 @@ func (x *Select) beautifyWhere() string {
 func (x *Select) beautifyHaving() string {
 	if conditions := x.Having; len(conditions) > 0 {
 		sql := strings.Builder{}
-		sql.WriteString(consts.NewLine)
+		sql.WriteString(consts.NextLine)
 		sql.WriteString(x.align(consts.HAVING))
 		sql.WriteString(consts.Blank)
 		for i, condition := range conditions {
 			if i > 0 {
-				sql.WriteString(consts.NewLine)
+				sql.WriteString(consts.NextLine)
 			}
-			sql.WriteString(condition.beautify())
+			sql.WriteString(condition.beautify(x.indent))
 		}
 		return sql.String()
 	}
@@ -331,15 +330,25 @@ func (x *Select) beautifyHaving() string {
 func (x *Select) beautifyOrderBy() string {
 	if values := x.OrderBy; len(values) > 0 {
 		sql := strings.Builder{}
-		sql.WriteString(consts.NewLine)
+		sql.WriteString(consts.NextLine)
 		sql.WriteString(x.align(consts.OrderBy))
 		sql.WriteString(consts.Blank)
+		var max, nextLine = 0, false
+		for _, value := range values {
+			if max = max + len(value); max > 100 {
+				nextLine = true
+				break
+			}
+		}
 		for i, value := range values {
 			value = strings.TrimSpace(value)
 			if i > 0 {
 				sql.WriteString(consts.Comma)
-				sql.WriteString(consts.NewLine)
-				sql.WriteString(strings.Repeat(consts.Blank, x.indent+4))
+				sql.WriteString(consts.Blank)
+				if nextLine {
+					sql.WriteString(consts.NextLine)
+					sql.WriteString(Align(x.indent + 4))
+				}
 			}
 			sql.WriteString(value)
 		}
@@ -351,15 +360,24 @@ func (x *Select) beautifyOrderBy() string {
 func (x *Select) beautifyGroupBy() string {
 	if values := x.GroupBy; len(values) > 0 {
 		sql := strings.Builder{}
-		sql.WriteString(consts.NewLine)
+		sql.WriteString(consts.NextLine)
 		sql.WriteString(x.align(consts.GroupBy))
 		sql.WriteString(consts.Blank)
+		var max, nextLine = 0, false
+		for _, value := range values {
+			if max = max + len(value); max > 100 {
+				nextLine = true
+				break
+			}
+		}
 		for i, value := range values {
-			value = strings.TrimSpace(value)
 			if i > 0 {
 				sql.WriteString(consts.Comma)
-				sql.WriteString(consts.NewLine)
-				sql.WriteString(strings.Repeat(consts.Blank, x.indent+4))
+				sql.WriteString(consts.Blank)
+				if nextLine {
+					sql.WriteString(consts.NextLine)
+					sql.WriteString(Align(x.indent + 4))
+				}
 			}
 			sql.WriteString(value)
 		}
@@ -371,7 +389,7 @@ func (x *Select) beautifyGroupBy() string {
 func (x *Select) beautifyLimit() string {
 	sql := strings.Builder{}
 	if x.Limit != consts.Empty {
-		sql.WriteString(consts.NewLine)
+		sql.WriteString(consts.NextLine)
 		sql.WriteString(x.align(consts.LIMIT))
 		sql.WriteString(consts.Blank)
 		sql.WriteString(x.Limit)

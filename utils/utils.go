@@ -30,9 +30,9 @@ func ParseValuesInSql(sql string) (string, *strings.Replacer) {
 	if len(values) > 0 {
 		var all []string
 		for i, value := range values {
-			var key = consts.ReplacePrefix + strconv.Itoa(i+1)
-			sql = strings.Replace(sql, value, key, 1)
-			all = append(all, key, value)
+			var replaceKey = consts.ReplacePrefix + strconv.Itoa(i+1) + consts.ReplaceSuffix
+			sql = strings.Replace(sql, value, replaceKey, 1)
+			all = append(all, replaceKey, value)
 		}
 		replacer := strings.NewReplacer(all...)
 		return sql, replacer

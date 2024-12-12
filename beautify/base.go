@@ -22,10 +22,11 @@ func NewBase(sql string, indent ...int) Base {
 
 // Base SQL解析器base
 type Base struct {
-	originSql string            // 原始sql，原始完整sql（变量值需要通过 replacer 还原）
+	originSql string            // 原始sql，原始完整sql（变量值需要通过 replacer 进行还原）
 	tempSql   string            // 临时sql，存储每个步骤经过sql拆解之后的sql片段
 	indent    int               // 缩进量
-	replacer  *strings.Replacer // 替换器，用于将 originSql 的变量占位符还原成原始值
+	simple    bool              // 简单sql
+	replacer  *strings.Replacer // 变量值替换器，consts.ReplacePrefix + 编号 + consts.ReplaceSuffix
 }
 
 // 解析准备
@@ -46,20 +47,25 @@ func (b *Base) parseFinish() {
 }
 
 // 以当前缩进量对齐
-func (b *Base) align(sql ...string) string {
-	if len(sql) == 0 {
-		return strings.Repeat(consts.Blank, b.indent)
-	} else if str := sql[0]; len(str) <= b.indent {
-		return strings.Repeat(consts.Blank, b.indent-len(str)) + str
-	} else if cut, _ := utils.CutString(str, consts.Blank); len(cut) <= b.indent {
-		return strings.Repeat(consts.Blank, b.indent-len(cut)) + str
+func (b *Base) align(key ...string) string {
+	return Align(b.indent, key...)
+}
+
+// Align 根据缩进量对齐
+func Align(indent int, key ...string) string {
+	if len(key) == 0 {
+		return strings.Repeat(consts.Blank, indent)
+	} else if str := key[0]; len(str) <= indent {
+		return strings.Repeat(consts.Blank, indent-len(str)) + str
+	} else if cut, _ := utils.CutString(str, consts.Blank); len(cut) <= indent {
+		return strings.Repeat(consts.Blank, indent-len(cut)) + str
 	} else {
 		return str
 	}
 }
 
 // ExtractWhere 提取条件
-func ExtractWhere(sql string, indent int) ([]*Condition, string) {
+func ExtractWhere(sql string) ([]*Condition, string) {
 	if sql != "" {
 		if index := utils.FirstIndexOfKeyword(sql, consts.WHERE); index >= 0 {
 			// 去除where关键字
@@ -72,28 +78,27 @@ func ExtractWhere(sql string, indent int) ([]*Condition, string) {
 				whereSql, sql = sql, consts.Empty
 			}
 			// 提取Conditions条件
-			return NewConditions(whereSql, indent), sql
+			return NewConditions(whereSql), sql
 		}
 	}
 	return nil, sql
 }
 
 // NewConditions 全部条件
-func NewConditions(sql string, indent int) []*Condition {
+func NewConditions(sql string) []*Condition {
 	// 去除前后多余括号
 	sql = utils.TrimBrackets(sql)
 	var conditions []*Condition
-	var loop = true
-	var andOr string
+	var loop, andOr = true, ""
 	for loop {
 		if index := utils.IndexExcludeBrackets(sql, consts.AND, true); index > 0 {
-			conditions = append(conditions, NewCondition(sql[:index], indent, andOr))
+			conditions = append(conditions, NewCondition(sql[:index], andOr))
 			sql, andOr = sql[index+4:], consts.AND
 		} else if index = utils.IndexExcludeBrackets(sql, consts.OR, true); index > 0 {
-			conditions = append(conditions, NewCondition(sql[:index], indent, andOr))
+			conditions = append(conditions, NewCondition(sql[:index], andOr))
 			sql, andOr = sql[index+3:], consts.OR
 		} else {
-			conditions = append(conditions, NewCondition(sql, indent, andOr))
+			conditions = append(conditions, NewCondition(sql, andOr))
 			loop = false
 		}
 	}
@@ -101,17 +106,33 @@ func NewConditions(sql string, indent int) []*Condition {
 }
 
 // NewCondition 单个条件
-func NewCondition(sql string, indent int, andOr string) *Condition {
+func NewCondition(sql string, andOr string) *Condition {
 	// 去除前后空格
 	sql = strings.TrimSpace(sql)
-	var condition = &Condition{Indent: indent, AndOr: andOr}
+	var condition = &Condition{AndOr: andOr}
 	if from, to := utils.BetweenOfString(sql, consts.LeftBracket, consts.RightBracket); from == 0 && to == len(sql)-1 {
-		condition.Conditions = NewConditions(sql[from+1:to], indent) // ()括号在前后两端表示是联合子条件
-	} else if index := utils.IndexExcludeBrackets(sql, consts.NotEquals, true); index > 0 {
+		condition.Conditions = NewConditions(sql[from+1 : to]) // ()括号在前后两端表示是联合子条件
+	} else if index := utils.IndexExcludeBrackets(sql, consts.NE, true); index > 0 {
 		condition.Name = sql[:index-1]
 		condition.Operator = sql[index : index+2]
 		condition.Value = sql[index+3:]
-	} else if index = utils.IndexExcludeBrackets(sql, consts.Equals, true); index > 0 {
+	} else if index = utils.IndexExcludeBrackets(sql, consts.GE, true); index > 0 {
+		condition.Name = sql[:index-1]
+		condition.Operator = sql[index : index+2]
+		condition.Value = sql[index+3:]
+	} else if index = utils.IndexExcludeBrackets(sql, consts.LE, true); index > 0 {
+		condition.Name = sql[:index-1]
+		condition.Operator = sql[index : index+2]
+		condition.Value = sql[index+3:]
+	} else if index = utils.IndexExcludeBrackets(sql, consts.EQ, true); index > 0 {
+		condition.Name = sql[:index-1]
+		condition.Operator = sql[index : index+1]
+		condition.Value = sql[index+2:]
+	} else if index = utils.IndexExcludeBrackets(sql, consts.LT, true); index > 0 {
+		condition.Name = sql[:index-1]
+		condition.Operator = sql[index : index+1]
+		condition.Value = sql[index+2:]
+	} else if index = utils.IndexExcludeBrackets(sql, consts.GT, true); index > 0 {
 		condition.Name = sql[:index-1]
 		condition.Operator = sql[index : index+1]
 		condition.Value = sql[index+2:]
@@ -122,11 +143,11 @@ func NewCondition(sql string, indent int, andOr string) *Condition {
 	} else if index = utils.IndexExcludeBrackets(sql, consts.NotIn, true); index > 0 {
 		condition.Name = sql[:index-1]
 		condition.Operator = sql[index : index+6]
-		condition.Values, condition.Select = parseInValues(sql[index+7:])
+		condition.parseIn(sql[index+7:])
 	} else if index = utils.IndexExcludeBrackets(sql, consts.IN, true); index > 0 {
 		condition.Name = sql[:index-1]
 		condition.Operator = sql[index : index+2]
-		condition.Values, condition.Select = parseInValues(sql[index+3:])
+		condition.parseIn(sql[index+3:])
 	} else if index = utils.IndexExcludeBrackets(sql, consts.IsNot, true); index > 0 {
 		condition.Name = sql[:index-1]
 		condition.Operator = sql[index : index+6]
@@ -141,9 +162,15 @@ func NewCondition(sql string, indent int, andOr string) *Condition {
 	return condition
 }
 
+// Join 关联表解析
+type Join struct {
+	Table *Table // join表对象
+	Type  string // join类型left/right/inner
+	On    string // 关联条件
+}
+
 // Condition 查询条件解析
 type Condition struct {
-	Indent     int          // 缩进量
 	AndOr      string       // and/or
 	Name       string       // 字段
 	Operator   string       // 运算符（=、!=、like、in、not in、is、is not）
@@ -153,22 +180,34 @@ type Condition struct {
 	Conditions []*Condition // 子条件
 }
 
-func (c *Condition) beautify() string {
+func (c *Condition) parseIn(sql string) {
+	sql = strings.Trim(sql, "() ;")
+	if index := utils.FirstIndexOfKeyword(sql, consts.SELECT); index >= 0 {
+		indent := len(c.Name) + 12
+		c.Select = ParseSelectSQL(sql, indent)
+	} else {
+		c.Values = strings.Split(sql, consts.Comma)
+	}
+}
+
+func (c *Condition) beautify(indent int) string {
 	var sql = strings.Builder{}
 	if c.AndOr != "" {
-		sql.WriteString(c.AndOr)
+		// 增加缩进
+		sql.WriteString(Align(indent, c.AndOr))
 		sql.WriteString(consts.Blank)
 	}
-	if len(c.Conditions) > 0 {
+	if len(c.Conditions) > 0 { // 联合子条件
 		sql.WriteString("(")
 		for i, condition := range c.Conditions {
 			if i > 0 {
 				sql.WriteString(consts.Blank)
 			}
-			sql.WriteString(condition.beautify())
+			sql.WriteString(condition.beautify(0))
 		}
 		sql.WriteString(")")
-	} else {
+	} else { // 单条件
+		indent = indent + len(c.Name) + 6
 		sql.WriteString(c.Name)
 		sql.WriteString(consts.Blank)
 		sql.WriteString(c.Operator)
@@ -176,12 +215,19 @@ func (c *Condition) beautify() string {
 		if c.Operator == consts.IN || c.Operator == consts.NotIn {
 			sql.WriteString(consts.LeftBracket)
 			if len(c.Values) > 0 {
-				for _, value := range c.Values {
-					sql.WriteString(consts.NewLine)
+				var nextLine = len(c.Values) > 3
+				for i, value := range c.Values {
+					if i > 0 {
+						sql.WriteString(consts.Comma)
+						sql.WriteString(consts.Blank)
+						if nextLine {
+							sql.WriteString(consts.NextLine)
+							sql.WriteString(Align(indent))
+						}
+					}
 					sql.WriteString(value)
 				}
 			} else {
-				sql.WriteString(consts.NewLine)
 				sql.WriteString(c.Select.Beautify())
 			}
 			sql.WriteString(consts.RightBracket)
@@ -190,22 +236,6 @@ func (c *Condition) beautify() string {
 		}
 	}
 	return sql.String()
-}
-
-func parseInValues(sql string) ([]string, *Select) {
-	sql = strings.Trim(sql, "() ")
-	if index := utils.FirstIndexOfKeyword(sql, consts.SELECT); index >= 0 {
-		return nil, ParseSelectSQL(sql)
-	} else {
-		return strings.Split(sql, consts.Comma), nil
-	}
-}
-
-// Join 关联表解析
-type Join struct {
-	Table *Table // join表对象
-	Type  string // join类型left/right/inner
-	On    string // 关联条件
 }
 
 // ExtractTable 提取主表

@@ -49,7 +49,7 @@ func (x *Insert) beautifyInsert() string {
 	var sql = strings.Builder{}
 	sql.WriteString("insert into ")
 	sql.WriteString(x.Table.beautify())
-	sql.WriteString(consts.NewLine)
+	sql.WriteString(consts.NextLine)
 	return sql.String()
 }
 
@@ -70,14 +70,14 @@ func (x *Insert) beautifyFields() string {
 		if i > 0 {
 			sql.WriteString(consts.Comma)
 			if nextLine {
-				sql.WriteString(consts.NewLine)
+				sql.WriteString(consts.NextLine)
 				sql.WriteString(x.align())
 			}
 		}
 		sql.WriteString(field.Name)
 	}
 	sql.WriteString(consts.RightBracket)
-	sql.WriteString(consts.NewLine)
+	sql.WriteString(consts.NextLine)
 	return sql.String()
 }
 
@@ -92,11 +92,11 @@ func (x *Insert) beautifyValues() string {
 			nextLine = true
 		}
 		sql.WriteString(consts.Values)
-		sql.WriteString(consts.NewLine)
+		sql.WriteString(consts.NextLine)
 		for i, values := range x.ValueData {
 			if i > 0 {
 				sql.WriteString(consts.Comma)
-				sql.WriteString(consts.NewLine)
+				sql.WriteString(consts.NextLine)
 			}
 			sql.WriteString(x.align(consts.LeftBracket))
 			for j, value := range values {
@@ -104,19 +104,18 @@ func (x *Insert) beautifyValues() string {
 					sql.WriteString(consts.Comma)
 				}
 				if nextLine {
-					sql.WriteString(consts.NewLine)
+					sql.WriteString(consts.NextLine)
 					sql.WriteString(x.align())
 				}
 				sql.WriteString(value)
 			}
 			if nextLine {
-				sql.WriteString(consts.NewLine)
+				sql.WriteString(consts.NextLine)
 				sql.WriteString(x.align(consts.RightBracket))
 			} else {
 				sql.WriteString(consts.RightBracket)
 			}
 		}
-		sql.WriteString(consts.Semicolon)
 	}
 	return sql.String()
 }

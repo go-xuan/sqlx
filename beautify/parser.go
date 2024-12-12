@@ -8,7 +8,7 @@ import (
 )
 
 func Parse(sql string) IParser {
-	sql = strings.ReplaceAll(sql, consts.NewLine, consts.Blank)         // 移除换行
+	sql = strings.ReplaceAll(sql, consts.NextLine, consts.Blank)        // 移除换行
 	sql = regexp.MustCompile(`\s+`).ReplaceAllString(sql, consts.Blank) // 去除多余空格
 	sql = strings.TrimSpace(sql)                                        // 去除空格
 	switch t := strings.ToLower(sql[:6]); t {                           // 根据sql查询语句开头关键字判断sql类型
