@@ -23,7 +23,7 @@ func Parse(sql string) IParser {
 	case consts.CREATE:
 		return ParseCreateSQL(sql)
 	default:
-		panic("不支持当前SQL：" + t)
+		panic("the input content cannot be parsed: " + sql)
 	}
 }
 
