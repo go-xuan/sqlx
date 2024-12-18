@@ -118,7 +118,7 @@ func (x *Update) parseTable() *Update {
 		sql = sql[5:]
 	}
 	// 根据set关键字进行拆分
-	if index := utils.FirstIndexOfKeyword(sql, consts.SET); index >= 0 {
+	if index := utils.IndexOfKeywordFirst(sql, consts.SET); index >= 0 {
 		x.tempSql = sql[index:]
 		sql = sql[:index]
 	}
@@ -138,12 +138,12 @@ func (x *Update) parseTable() *Update {
 func (x *Update) parseFields() *Update {
 	sql := x.tempSql
 	// 根据where关键字进行拆分
-	if index := utils.FirstIndexOfKeyword(sql, consts.WHERE); index > 0 {
+	if index := utils.IndexOfKeywordFirst(sql, consts.WHERE); index > 0 {
 		x.tempSql = sql[index:]
 		sql = sql[:index]
 	}
 	// 截取where关键字前面的sql片段
-	if index := utils.FirstIndexOfKeyword(sql, consts.SET); index >= 0 {
+	if index := utils.IndexOfKeywordFirst(sql, consts.SET); index >= 0 {
 		sql = sql[index+4:]
 		list, last := utils.SplitExcludeInBracket(sql, consts.Comma)
 		list = append(list, last)

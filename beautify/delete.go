@@ -44,7 +44,7 @@ func (x *Delete) parseTable() *Delete {
 		sql = sql[5:]
 	}
 	// 根据where关键字进行拆分
-	if index := utils.FirstIndexOfKeyword(sql, consts.WHERE); index >= 0 {
+	if index := utils.IndexOfKeywordFirst(sql, consts.WHERE); index >= 0 {
 		x.tempSql = sql[index:]
 		sql = sql[:index]
 	}
