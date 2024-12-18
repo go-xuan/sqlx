@@ -67,7 +67,7 @@ func Align(indent int, key ...string) string {
 // ExtractWhere 提取条件
 func ExtractWhere(sql string) ([]*Condition, string) {
 	if sql != "" {
-		if index := utils.FirstIndexOfKeyword(sql, consts.WHERE); index >= 0 {
+		if index := utils.IndexOfKeywordFirst(sql, consts.WHERE); index >= 0 {
 			// 去除where关键字
 			sql = sql[index+5:]
 			// 提取where部分sql
@@ -182,7 +182,7 @@ type Condition struct {
 
 func (c *Condition) parseIn(sql string) {
 	sql = strings.Trim(sql, "() ;")
-	if index := utils.FirstIndexOfKeyword(sql, consts.SELECT); index >= 0 {
+	if index := utils.IndexOfKeywordFirst(sql, consts.SELECT); index >= 0 {
 		indent := len(c.Name) + 12
 		c.Select = ParseSelectSQL(sql, indent)
 	} else {

@@ -20,8 +20,6 @@ func Parse(sql string) IParser {
 		return ParseDeleteSQL(sql)
 	case consts.INSERT:
 		return ParseInsertSQL(sql)
-	case consts.CREATE:
-		return ParseCreateSQL(sql)
 	default:
 		panic("the input content cannot be parsed: " + sql)
 	}

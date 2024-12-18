@@ -15,7 +15,7 @@ type SqlUtils struct {
 // ExtractAlias 提取别名
 func ExtractAlias(sql string) string {
 	sql = strings.TrimSpace(sql)
-	if index := FirstIndexOfKeyword(sql, consts.AS); index >= 0 {
+	if index := IndexOfKeywordFirst(sql, consts.AS); index >= 0 {
 		return sql[index+3:]
 	} else if index = IndexOfString(sql, consts.Blank); index >= 0 {
 		return sql[index+1:]
@@ -44,7 +44,7 @@ func ParseValuesInSql(sql string) (string, *strings.Replacer) {
 func AllKeywordsToLower(sql string) string {
 	var oldnew []string
 	var KEYWORDS = []string{
-		consts.SELECT, consts.UPDATE, consts.CREATE, consts.DELETE, consts.INSERT, consts.INTO, consts.FROM,
+		consts.SELECT, consts.UPDATE, consts.DELETE, consts.INSERT, consts.INTO, consts.FROM,
 		consts.WHERE, consts.SET, consts.JOIN, consts.GROUP, consts.ORDER, consts.HAVING, consts.LIMIT, consts.OFFSET,
 		consts.ASC, consts.DESC, consts.CASE, consts.WHEN, consts.THEN, consts.END, consts.INNER, consts.OUTER, consts.LEFT, consts.RIGHT,
 		consts.DISTINCT, consts.PARTITION, consts.OVER, consts.AS, consts.AND, consts.ON, consts.OR, consts.IN, consts.NOT, consts.LIKE, consts.By,
@@ -114,7 +114,7 @@ func IndexExcludeBrackets(sql, key string, pure bool) int {
 func ContainsKeywords(sql string, keys ...string) (string, int) {
 	var hit, index = "", -1
 	for _, key := range keys {
-		if i := FirstIndexOfKeyword(sql, key); i >= 0 {
+		if i := IndexOfKeywordFirst(sql, key); i >= 0 {
 			if i < index {
 				hit, index = key, i
 			} else if index == -1 {
@@ -129,7 +129,7 @@ func ContainsKeywords(sql string, keys ...string) (string, int) {
 func LastIndexOfKeys(sql string, keys ...string) (string, int) {
 	var hit, index = "", -1
 	for _, key := range keys {
-		if i := LastIndexOfKeyword(sql, key); i >= 0 && i > index {
+		if i := IndexOfKeywordLast(sql, key); i >= 0 && i > index {
 			hit, index = key, i
 		}
 	}
@@ -141,7 +141,7 @@ func FirstIndexOfKeys(sql string, keys ...string) (string, int) {
 	var max = len(sql) - 1
 	var hit, index = "", max
 	for _, key := range keys {
-		if i := FirstIndexOfKeyword(sql, key); i >= 0 && i < index {
+		if i := IndexOfKeywordFirst(sql, key); i >= 0 && i < index {
 			index = i
 		}
 	}
@@ -161,7 +161,7 @@ func IndicesOfKeyword(sql, key string, size ...int) []int {
 		var indices []int
 		var index, offset int
 		for n <= s || s == 0 {
-			if newIndex := FirstIndexOfKeyword(sql, key); newIndex >= 0 {
+			if newIndex := IndexOfKeywordFirst(sql, key); newIndex >= 0 {
 				index = offset + newIndex
 				offset = index + kl
 				sql = sql[newIndex+kl:]
@@ -178,13 +178,12 @@ func IndicesOfKeyword(sql, key string, size ...int) []int {
 
 // IndexOfKeyword 获取关键字的正向N次出现下标
 func IndexOfKeyword(sql, key string, position int) int {
-	if position < 0 {
-		return IndexOfKeywordReverse(sql, key, position)
-	}
-	if sl, kl := len(sql), len(key); sl >= kl {
+	if sl, kl := len(sql), len(key); sl < kl || position == 0 {
+		return -1
+	} else if position > 0 {
 		var index, offset int
 		for i := 0; i < position; i++ {
-			if newIndex := FirstIndexOfKeyword(sql, key); newIndex >= 0 {
+			if newIndex := IndexOfKeywordFirst(sql, key); newIndex >= 0 {
 				index = offset + newIndex
 				offset = index + kl
 				sql = sql[newIndex+kl:]
@@ -194,19 +193,10 @@ func IndexOfKeyword(sql, key string, position int) int {
 			}
 		}
 		return index
-	}
-	return -1
-}
-
-// IndexOfKeywordReverse 获取关键字的反向n次出现下标
-func IndexOfKeywordReverse(sql, key string, position int) int {
-	if position > 0 {
-		return IndexOfKeyword(sql, key, position)
-	}
-	if sl, kl := len(sql), len(key); sl >= kl {
+	} else {
 		var index = -1
 		for i := 0; i > position; i-- {
-			if index = LastIndexOfKeyword(sql, key); index >= 0 {
+			if index = IndexOfKeywordLast(sql, key); index >= 0 {
 				sql = sql[:index]
 			} else {
 				break
@@ -214,11 +204,10 @@ func IndexOfKeywordReverse(sql, key string, position int) int {
 		}
 		return index
 	}
-	return -1
 }
 
-// FirstIndexOfKeyword 获取sql中关键字首次出现的下标
-func FirstIndexOfKeyword(sql, key string) int {
+// IndexOfKeywordFirst 获取sql中关键字首次出现的下标
+func IndexOfKeywordFirst(sql, key string) int {
 	//kl: key字符长度 loop:继续循环 index：命中下标
 	kl, loop, index := len(key), true, 0
 	for loop {
@@ -236,8 +225,8 @@ func FirstIndexOfKeyword(sql, key string) int {
 	return index
 }
 
-// LastIndexOfKeyword 获取sql中关键字末次出现的下标
-func LastIndexOfKeyword(sql, key string) int {
+// IndexOfKeywordLast 获取sql中关键字末次出现的下标
+func IndexOfKeywordLast(sql, key string) int {
 	loop, index := true, 0
 	for loop {
 		if newIndex := IndexOfString(sql, key, -1); newIndex >= 0 {
@@ -381,24 +370,4 @@ func CutString(sql, str string, position ...int) (string, string) {
 		return sql[:i], sql[i+len(str):]
 	}
 	return sql, ""
-}
-
-// DB2GoType DB-Go类型映射
-func DB2GoType(t string) string {
-	switch t {
-	case consts.Char, consts.Varchar, consts.Varchar100, consts.Text, consts.Uuid:
-		return consts.String
-	case consts.Int, consts.Int2, consts.Int4, consts.Tinyint, consts.Smallint, consts.Mediumint:
-		return consts.Int
-	case consts.Int8, consts.Bigint:
-		return consts.Int64
-	case consts.Float, consts.Float4, consts.Numeric:
-		return consts.Float64
-	case consts.Timestamp, consts.Timestampz, consts.Datetime, consts.Time, consts.Date:
-		return consts.TimeTime
-	case consts.Bool:
-		return consts.Bool
-	default:
-		return consts.String
-	}
 }

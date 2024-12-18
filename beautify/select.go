@@ -78,7 +78,7 @@ func (x *Select) parseFields() *Select {
 		for _, fieldSql := range list {
 			var name, alias string
 			fieldSql = strings.TrimSpace(fieldSql)
-			if i := utils.FirstIndexOfKeyword(fieldSql, consts.AS); i >= 0 {
+			if i := utils.IndexOfKeywordFirst(fieldSql, consts.AS); i >= 0 {
 				name, alias = fieldSql[:i], fieldSql[i:]
 			} else if fieldSql[len(fieldSql)-1:] == consts.RightBracket {
 				name = fieldSql
@@ -139,7 +139,7 @@ func (x *Select) parseJoins() *Select {
 					joinSql = joinSql[:index-1]
 				}
 
-				if index := utils.LastIndexOfKeyword(joinSql, consts.ON); index >= 0 {
+				if index := utils.IndexOfKeywordLast(joinSql, consts.ON); index >= 0 {
 					join.On, joinSql = joinSql[index+3:], joinSql[:index-1]
 				}
 
@@ -164,7 +164,7 @@ func (x *Select) parseWhere() *Select {
 // 提取group by
 func (x *Select) parseGroupBy() *Select {
 	sql := x.tempSql
-	if index := utils.FirstIndexOfKeyword(sql, consts.GroupBy); index >= 0 {
+	if index := utils.IndexOfKeywordFirst(sql, consts.GroupBy); index >= 0 {
 		var groupBySql string
 		if _, i := utils.ContainsKeywords(sql, consts.HAVING, consts.OrderBy, consts.LIMIT); i >= 0 {
 			groupBySql, sql = sql[index+9:i], sql[i:]
@@ -184,7 +184,7 @@ func (x *Select) parseGroupBy() *Select {
 // 提取having
 func (x *Select) parseHaving() *Select {
 	sql := x.tempSql
-	if index := utils.FirstIndexOfKeyword(sql, consts.HAVING); index >= 0 {
+	if index := utils.IndexOfKeywordFirst(sql, consts.HAVING); index >= 0 {
 		sql = sql[index+6:]
 		var havingSql string
 		if _, i := utils.ContainsKeywords(sql, consts.OrderBy, consts.LIMIT); i >= 0 {
@@ -201,7 +201,7 @@ func (x *Select) parseHaving() *Select {
 // 提取order by
 func (x *Select) parseOrderBy() *Select {
 	sql := x.tempSql
-	if index := utils.LastIndexOfKeyword(sql, consts.OrderBy); index > 0 {
+	if index := utils.IndexOfKeywordLast(sql, consts.OrderBy); index > 0 {
 		var orderBySql string
 		if i := utils.IndexOfString(sql, consts.RightBracket, -1); i < index {
 			// 排除子查询中的order by，只取主查询的order by
@@ -218,7 +218,7 @@ func (x *Select) parseOrderBy() *Select {
 // 提取limit
 func (x *Select) parseLimit() *Select {
 	sql := x.tempSql
-	i := utils.LastIndexOfKeyword(sql, consts.LIMIT)
+	i := utils.IndexOfKeywordLast(sql, consts.LIMIT)
 	j := utils.IndexOfString(sql, consts.RightBracket, -1)
 	if i > 0 && i > j {
 		x.Limit, sql = sql[i+6:], sql[:i]

@@ -123,11 +123,11 @@ func (x *Insert) beautifyValues() string {
 func (x *Insert) parseTable() *Insert {
 	sql := x.tempSql
 	// 去除insert关键字
-	if index := utils.FirstIndexOfKeyword(sql, consts.INSERT); index == 0 {
+	if index := utils.IndexOfKeywordFirst(sql, consts.INSERT); index == 0 {
 		sql = sql[7:]
 	}
 	// 去除into关键字
-	if index := utils.FirstIndexOfKeyword(sql, consts.INTO); index == 0 {
+	if index := utils.IndexOfKeywordFirst(sql, consts.INTO); index == 0 {
 		sql = sql[5:]
 	}
 	// 根据set关键字进行拆分
@@ -159,7 +159,7 @@ func (x *Insert) extractFields() *Insert {
 
 func (x *Insert) extractValues() *Insert {
 	sql := strings.TrimLeft(x.tempSql, consts.Blank)
-	if index := utils.FirstIndexOfKeyword(sql, consts.SELECT); index == 0 {
+	if index := utils.IndexOfKeywordFirst(sql, consts.SELECT); index == 0 {
 		if query := ParseSelectSQL(sql); query != nil && len(query.Fields) == len(x.Fields) {
 			x.Query = query
 		} else {
@@ -168,11 +168,11 @@ func (x *Insert) extractValues() *Insert {
 		return x
 	}
 	// 去除values关键字
-	if index := utils.FirstIndexOfKeyword(sql, consts.Values); index == 0 {
+	if index := utils.IndexOfKeywordFirst(sql, consts.Values); index == 0 {
 		sql = sql[7:]
 	}
 
-	if index := utils.FirstIndexOfKeyword(sql, consts.Value); index == 0 {
+	if index := utils.IndexOfKeywordFirst(sql, consts.Value); index == 0 {
 		sql = sql[6:]
 	}
 
