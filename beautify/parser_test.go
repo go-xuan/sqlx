@@ -6,14 +6,8 @@ import (
 )
 
 func TestSelectBeautify(t *testing.T) {
-	sql := `SELECT '123' as qqq, '456', '789', good(t1.aaa, ',') as aaa,"user_from", t1.bbb, good(t1.ccc, ',') as ccc
-	FROM t_table_1 as t1 left join t_table_2 t2 on t1.aaa = t2.aaa right join (select aaa,bbb,ccc from t_table_4 where aaa = '1') t2 on t2.aaa = t3.aaa
-	where t1.aaa = '1' and (t2.bbb = '1' or t3.ccc = '1') and t1.ddd in ('111111111','222222','33333') and t1.eee in ('111111111','222222','33333','44444') 
-	and t1.fff in ( select id from t_table_4)
-	group by t1.aaa, t2.bbb, t3.ccc having t1.aaa > 1 and (t2.bbb <= 1 or t3.ccc = 0)
-	order by t1.aaa ASC, t2.bbb DESC, t3.ccc ASC limit 10 offset 20`
+	sql := `INSERT INTO "test" ("aaa","bbb","ccc","ddd","eee","fff","ggg") VALUES (1, 2,'3','4',func(123),'6', now());`
 	parser := Parse(sql)
-	parser.Beautify()
 	fmt.Println(parser.Beautify())
 }
 

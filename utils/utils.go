@@ -44,10 +44,10 @@ func ParseValuesInSql(sql string) (string, *strings.Replacer) {
 func AllKeywordsToLower(sql string) string {
 	var oldnew []string
 	var KEYWORDS = []string{
-		consts.SELECT, consts.UPDATE, consts.DELETE, consts.INSERT, consts.INTO, consts.FROM,
-		consts.WHERE, consts.SET, consts.JOIN, consts.GROUP, consts.ORDER, consts.HAVING, consts.LIMIT, consts.OFFSET,
+		consts.SELECT, consts.UPDATE, consts.DELETE, consts.INSERT, consts.INTO, consts.VALUES, consts.VALUES,
+		consts.FROM, consts.WHERE, consts.SET, consts.JOIN, consts.GROUP, consts.ORDER, consts.HAVING, consts.LIMIT, consts.OFFSET,
 		consts.ASC, consts.DESC, consts.CASE, consts.WHEN, consts.THEN, consts.END, consts.INNER, consts.OUTER, consts.LEFT, consts.RIGHT,
-		consts.DISTINCT, consts.PARTITION, consts.OVER, consts.AS, consts.AND, consts.ON, consts.OR, consts.IN, consts.NOT, consts.LIKE, consts.By,
+		consts.DISTINCT, consts.PARTITION, consts.OVER, consts.AS, consts.AND, consts.ON, consts.OR, consts.IN, consts.NOT, consts.LIKE, consts.BY,
 	}
 	for _, keyword := range KEYWORDS {
 		switch keyword {
@@ -62,11 +62,24 @@ func AllKeywordsToLower(sql string) string {
 	return sql
 }
 
-func SplitValuesSql(valuesSql string) []string {
-	valuesSql = strings.Trim(valuesSql, "() ")
-	values, value := SplitExcludeInBracket(valuesSql, consts.Comma)
-	values = append(values, value)
+func SplitValuesSql(sql string) []string {
+	sql = trimBrackets(sql)
+	values, value := SplitExcludeInBracket(sql, consts.Comma)
+	for i := range values {
+		values[i] = strings.TrimSpace(values[i])
+	}
+	values = append(values, strings.TrimSpace(value))
 	return values
+}
+
+func trimBrackets(sql string) string {
+	sql = strings.TrimSpace(sql)
+	from, to := BetweenOfString(sql, consts.LeftBracket, consts.RightBracket)
+	if from == 0 && to == len(sql)-1 {
+		sql = sql[1:to]
+		sql = trimBrackets(sql)
+	}
+	return sql
 }
 
 // SplitExcludeInBracket 根据分隔符进行拆分但是排除括号内的分隔符

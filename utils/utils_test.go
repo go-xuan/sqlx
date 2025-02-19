@@ -36,3 +36,9 @@ func TestSplitExcludeInBracket(t *testing.T) {
 		fmt.Println(strings.Fields(last))
 	}
 }
+
+func TestTrimBrackets(t *testing.T) {
+	sql := `(1, 2,'3','4',func(123),'6', now())`
+	sql = trimBrackets(sql)
+	fmt.Println(sql)
+}

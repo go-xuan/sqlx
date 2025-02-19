@@ -21,7 +21,7 @@ func Parse(sql string) IParser {
 	case consts.INSERT:
 		return ParseInsertSQL(sql)
 	default:
-		panic("the input content cannot be parsed: " + sql)
+		panic("当前输入sql无法解析 " + sql)
 	}
 }
 
