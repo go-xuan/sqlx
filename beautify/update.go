@@ -1,10 +1,10 @@
 package beautify
 
 import (
-	"github.com/go-xuan/sqlx/utils"
 	"strings"
 
 	"github.com/go-xuan/sqlx/consts"
+	"github.com/go-xuan/sqlx/utils"
 )
 
 // ParseUpdateSQL 解析更新SQL
