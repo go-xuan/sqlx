@@ -114,7 +114,7 @@ func (x *Select) parseJoins() *Select {
 	if from, to := utils.BetweenOfString(sql, consts.LeftBracket, consts.RightBracket); from == 1 {
 		lastJoin, sql = sql[:to], sql[to:]
 	}
-	if _, index := utils.ContainsKeywords(sql, consts.WHERE, consts.GroupBy, consts.OrderBy, consts.LIMIT); index >= 0 {
+	if _, index := utils.ContainsKeywords(sql, consts.WHERE, consts.GROUPBY, consts.ORDERBY, consts.LIMIT); index >= 0 {
 		lastJoin, sql = lastJoin+sql[:index], sql[index:]
 	} else {
 		lastJoin, sql = lastJoin+sql, consts.Empty
@@ -164,9 +164,9 @@ func (x *Select) parseWhere() *Select {
 // 提取group by
 func (x *Select) parseGroupBy() *Select {
 	sql := x.tempSql
-	if index := utils.IndexOfKeywordFirst(sql, consts.GroupBy); index >= 0 {
+	if index := utils.IndexOfKeywordFirst(sql, consts.GROUPBY); index >= 0 {
 		var groupBySql string
-		if _, i := utils.ContainsKeywords(sql, consts.HAVING, consts.OrderBy, consts.LIMIT); i >= 0 {
+		if _, i := utils.ContainsKeywords(sql, consts.HAVING, consts.ORDERBY, consts.LIMIT); i >= 0 {
 			groupBySql, sql = sql[index+9:i], sql[i:]
 		} else {
 			groupBySql, sql = sql, consts.Empty
@@ -187,7 +187,7 @@ func (x *Select) parseHaving() *Select {
 	if index := utils.IndexOfKeywordFirst(sql, consts.HAVING); index >= 0 {
 		sql = sql[index+6:]
 		var havingSql string
-		if _, i := utils.ContainsKeywords(sql, consts.OrderBy, consts.LIMIT); i >= 0 {
+		if _, i := utils.ContainsKeywords(sql, consts.ORDERBY, consts.LIMIT); i >= 0 {
 			havingSql, sql = sql[:i], sql[i:]
 		} else {
 			havingSql, sql = sql, consts.Empty
@@ -201,7 +201,7 @@ func (x *Select) parseHaving() *Select {
 // 提取order by
 func (x *Select) parseOrderBy() *Select {
 	sql := x.tempSql
-	if index := utils.IndexOfKeywordLast(sql, consts.OrderBy); index > 0 {
+	if index := utils.IndexOfKeywordLast(sql, consts.ORDERBY); index > 0 {
 		var orderBySql string
 		if i := utils.IndexOfString(sql, consts.RightBracket, -1); i < index {
 			// 排除子查询中的order by，只取主查询的order by
@@ -331,7 +331,7 @@ func (x *Select) beautifyOrderBy() string {
 	if values := x.OrderBy; len(values) > 0 {
 		sql := strings.Builder{}
 		sql.WriteString(consts.NextLine)
-		sql.WriteString(x.align(consts.OrderBy))
+		sql.WriteString(x.align(consts.ORDERBY))
 		sql.WriteString(consts.Blank)
 		var max, nextLine = 0, false
 		for _, value := range values {
@@ -361,7 +361,7 @@ func (x *Select) beautifyGroupBy() string {
 	if values := x.GroupBy; len(values) > 0 {
 		sql := strings.Builder{}
 		sql.WriteString(consts.NextLine)
-		sql.WriteString(x.align(consts.GroupBy))
+		sql.WriteString(x.align(consts.GROUPBY))
 		sql.WriteString(consts.Blank)
 		var max, nextLine = 0, false
 		for _, value := range values {

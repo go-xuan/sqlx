@@ -72,7 +72,7 @@ func ExtractWhere(sql string) ([]*Condition, string) {
 			sql = sql[index+5:]
 			// 提取where部分sql
 			var whereSql string
-			if _, end := utils.ContainsKeywords(sql, consts.GroupBy, consts.OrderBy, consts.LIMIT); end >= 0 {
+			if _, end := utils.ContainsKeywords(sql, consts.GROUPBY, consts.ORDERBY, consts.LIMIT); end >= 0 {
 				whereSql, sql = sql[:end], sql[end:]
 			} else {
 				whereSql, sql = sql, consts.Empty
@@ -140,7 +140,7 @@ func NewCondition(sql string, andOr string) *Condition {
 		condition.Name = sql[:index-1]
 		condition.Operator = sql[index : index+4]
 		condition.Value = sql[index+5:]
-	} else if index = utils.IndexExcludeBrackets(sql, consts.NotIn, true); index > 0 {
+	} else if index = utils.IndexExcludeBrackets(sql, consts.NOTIN, true); index > 0 {
 		condition.Name = sql[:index-1]
 		condition.Operator = sql[index : index+6]
 		condition.parseIn(sql[index+7:])
@@ -148,7 +148,7 @@ func NewCondition(sql string, andOr string) *Condition {
 		condition.Name = sql[:index-1]
 		condition.Operator = sql[index : index+2]
 		condition.parseIn(sql[index+3:])
-	} else if index = utils.IndexExcludeBrackets(sql, consts.IsNot, true); index > 0 {
+	} else if index = utils.IndexExcludeBrackets(sql, consts.ISNOT, true); index > 0 {
 		condition.Name = sql[:index-1]
 		condition.Operator = sql[index : index+6]
 		condition.Value = sql[index+7:]
@@ -212,7 +212,7 @@ func (c *Condition) beautify(indent int) string {
 		sql.WriteString(consts.Blank)
 		sql.WriteString(c.Operator)
 		sql.WriteString(consts.Blank)
-		if c.Operator == consts.IN || c.Operator == consts.NotIn {
+		if c.Operator == consts.IN || c.Operator == consts.NOTIN {
 			sql.WriteString(consts.LeftBracket)
 			if len(c.Values) > 0 {
 				var nextLine = len(c.Values) > 3
@@ -263,7 +263,7 @@ func ExtractTable(sql string, indent int) (*Table, string) {
 	}
 	if sql != "" {
 		var alias string
-		if _, index := utils.ContainsKeywords(sql, consts.LEFT, consts.RIGHT, consts.INNER, consts.OUTER, consts.JOIN, consts.WHERE, consts.GroupBy, consts.OrderBy, consts.LIMIT); index >= 0 {
+		if _, index := utils.ContainsKeywords(sql, consts.LEFT, consts.RIGHT, consts.INNER, consts.OUTER, consts.JOIN, consts.WHERE, consts.GROUPBY, consts.ORDERBY, consts.LIMIT); index >= 0 {
 			// 判断是否是复杂查询
 			alias, sql = sql[:index], sql[index:]
 		} else { // 简单查询

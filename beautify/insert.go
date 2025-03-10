@@ -1,6 +1,7 @@
 package beautify
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/go-xuan/sqlx/consts"
@@ -72,6 +73,8 @@ func (x *Insert) beautifyFields() string {
 			if nextLine {
 				sql.WriteString(consts.NextLine)
 				sql.WriteString(x.align())
+			} else {
+				sql.WriteString(consts.Blank)
 			}
 		}
 		sql.WriteString(field.Name)
@@ -91,7 +94,7 @@ func (x *Insert) beautifyValues() string {
 		if len(x.Fields) >= 10 {
 			nextLine = true
 		}
-		sql.WriteString(consts.Values)
+		sql.WriteString(consts.VALUES)
 		sql.WriteString(consts.NextLine)
 		for i, values := range x.ValueData {
 			if i > 0 {
@@ -102,10 +105,12 @@ func (x *Insert) beautifyValues() string {
 			for j, value := range values {
 				if j > 0 {
 					sql.WriteString(consts.Comma)
-				}
-				if nextLine {
-					sql.WriteString(consts.NextLine)
-					sql.WriteString(x.align())
+					if nextLine {
+						sql.WriteString(consts.NextLine)
+						sql.WriteString(x.align())
+					} else {
+						sql.WriteString(consts.Blank)
+					}
 				}
 				sql.WriteString(value)
 			}
@@ -143,9 +148,9 @@ func (x *Insert) parseTable() *Insert {
 func (x *Insert) extractFields() *Insert {
 	sql := x.tempSql
 	// 根据set关键字进行拆分
-	if from, to := utils.BetweenOfString(sql, consts.LeftBracket, consts.RightBracket); from >= 0 && to >= from {
+	if from, to := utils.BetweenOfString(sql, consts.LeftBracket, consts.RightBracket); from >= 0 && from < to {
 		x.tempSql = sql[to+2:]
-		sql = sql[from:to]
+		sql = sql[from+1 : to]
 	}
 	if names := strings.Split(sql, consts.Comma); len(names) > 0 {
 		var fields []*Field
@@ -163,16 +168,16 @@ func (x *Insert) extractValues() *Insert {
 		if query := ParseSelectSQL(sql); query != nil && len(query.Fields) == len(x.Fields) {
 			x.Query = query
 		} else {
-			panic("the number of select fields and insert fields does not match")
+			panic("select字段数量和insert字段数量不匹配")
 		}
 		return x
 	}
 	// 去除values关键字
-	if index := utils.IndexOfKeywordFirst(sql, consts.Values); index == 0 {
+	if index := utils.IndexOfKeywordFirst(sql, consts.VALUES); index == 0 {
 		sql = sql[7:]
 	}
 
-	if index := utils.IndexOfKeywordFirst(sql, consts.Value); index == 0 {
+	if index := utils.IndexOfKeywordFirst(sql, consts.VALUE); index == 0 {
 		sql = sql[6:]
 	}
 
@@ -189,7 +194,11 @@ func (x *Insert) extractValues() *Insert {
 		if values := utils.SplitValuesSql(valuesSql); len(values) == len(x.Fields) {
 			x.ValueData = append(x.ValueData, values)
 		} else {
-			panic(valuesSql + "the number of insert values and insert fields does not match")
+			var names []string
+			for _, field := range x.Fields {
+				names = append(names, field.Name)
+			}
+			panic(fmt.Sprintf("insert字段数量和insert值数量不匹配：%v != %v", names, values))
 		}
 	}
 
