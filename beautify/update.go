@@ -31,14 +31,14 @@ type Update struct {
 }
 
 func (x *Update) Beautify() string {
-	var sql = strings.Builder{}
-	sql.WriteString(x.beautifyUpdate())
-	sql.WriteString(x.beautifyFields())
-	sql.WriteString(x.beautifyCondition())
-	if replacer := x.replacer; replacer != nil {
-		return replacer.Replace(sql.String())
+	var builder = strings.Builder{}
+	builder.WriteString(x.beautifyUpdate())
+	builder.WriteString(x.beautifyFields())
+	builder.WriteString(x.beautifyCondition())
+	if sql, replacer := builder.String(), x.replacer; replacer != nil {
+		return replacer.Replace(sql)
 	} else {
-		return sql.String()
+		return sql
 	}
 }
 
@@ -85,26 +85,40 @@ func (x *Update) beautifyFields() string {
 }
 
 func (x *Update) beautifyCondition() string {
-	sql := strings.Builder{}
 	if conditions := x.Where; len(conditions) > 0 {
+		sql := strings.Builder{}
+		var maxLen int
+		for _, condition := range x.Where {
+			l := len(condition.Name)
+			if maxLen < l {
+				maxLen = l
+			}
+		}
 		sql.WriteString(consts.NextLine)
 		sql.WriteString(x.align(consts.WHERE))
 		sql.WriteString(consts.Blank)
-		for i, cond := range conditions {
+		for i, condition := range conditions {
 			if i > 0 {
 				sql.WriteString(consts.NextLine)
-				if cond.AndOr == consts.Empty {
+				if condition.AndOr == consts.Empty {
 					sql.WriteString(x.align(consts.AND))
 					sql.WriteString(consts.Blank)
 				} else {
-					sql.WriteString(x.align(cond.AndOr))
+					sql.WriteString(x.align(condition.AndOr))
 					sql.WriteString(consts.Blank)
 				}
 			}
-			sql.WriteString(cond.Value)
+			if condition.Name != "" {
+				sql.WriteString(condition.Name)
+				sql.WriteString(strings.Repeat(consts.Blank, maxLen-len(condition.Name)+1))
+				sql.WriteString(condition.Operator)
+				sql.WriteString(consts.Blank)
+			}
+			sql.WriteString(condition.Value)
 		}
+		return sql.String()
 	}
-	return sql.String()
+	return ""
 }
 
 func (x *Update) parseTable() *Update {

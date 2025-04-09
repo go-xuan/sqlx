@@ -34,14 +34,14 @@ type Insert struct {
 }
 
 func (x *Insert) Beautify() string {
-	var sql = strings.Builder{}
-	sql.WriteString(x.beautifyInsert())
-	sql.WriteString(x.beautifyFields())
-	sql.WriteString(x.beautifyValues())
-	if replacer := x.replacer; replacer != nil {
-		return replacer.Replace(sql.String())
+	var builder = strings.Builder{}
+	builder.WriteString(x.beautifyInsert())
+	builder.WriteString(x.beautifyFields())
+	builder.WriteString(x.beautifyValues())
+	if sql, replacer := builder.String(), x.replacer; replacer != nil {
+		return replacer.Replace(sql)
 	} else {
-		return sql.String()
+		return sql
 	}
 }
 
@@ -86,10 +86,10 @@ func (x *Insert) beautifyFields() string {
 
 // 构建查询字段sql
 func (x *Insert) beautifyValues() string {
-	var sql = strings.Builder{}
 	if x.Query != nil {
-		sql.WriteString(x.Query.Beautify())
+		return x.Query.Beautify()
 	} else if x.ValueData != nil {
+		var sql = strings.Builder{}
 		var nextLine bool
 		if len(x.Fields) >= 10 {
 			nextLine = true
@@ -121,8 +121,9 @@ func (x *Insert) beautifyValues() string {
 				sql.WriteString(consts.RightBracket)
 			}
 		}
+		return sql.String()
 	}
-	return sql.String()
+	return ""
 }
 
 func (x *Insert) parseTable() *Insert {
