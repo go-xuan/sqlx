@@ -1,7 +1,6 @@
 package beautify
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/go-xuan/sqlx/consts"
@@ -156,6 +155,7 @@ func (x *Insert) extractFields() *Insert {
 	if names := strings.Split(sql, consts.Comma); len(names) > 0 {
 		var fields []*Field
 		for _, name := range names {
+			name = strings.TrimSpace(name)
 			fields = append(fields, &Field{Name: name})
 		}
 		x.Fields = fields
@@ -196,10 +196,13 @@ func (x *Insert) extractValues() *Insert {
 			x.ValueData = append(x.ValueData, values)
 		} else {
 			var names []string
-			for _, field := range x.Fields {
-				names = append(names, field.Name)
+			max := len(values)
+			for i, field := range x.Fields {
+				if i < max {
+					names = append(names, field.Name+" : "+x.replacer.Replace(values[i]))
+				}
 			}
-			panic(fmt.Sprintf("insert字段数量和insert值数量不匹配：%v != %v", names, values))
+			panic("insert字段数量和insert值数量不匹配: \n" + strings.Join(names, "\n"))
 		}
 	}
 

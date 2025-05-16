@@ -16,6 +16,20 @@ func TestUpdateBeautify(t *testing.T) {
 }
 
 func TestInsertBeautify(t *testing.T) {
-	fmt.Println(Parse(`insert into test (aaa,bbb,ccc,ddd) values (101,102,103,104),(201,202,203,204),(301,302,303,304);`).Beautify())
+	fmt.Println(Parse(`INSERT INTO cron_task (id, "name", "type", spec, status, remark, request_api, request_method, request_url, request_headers, request_form, request_body, create_time, update_time, delete_time)
+VALUES ('5e3b7fec-74ec-47f6-9e0c-1639ba18def0',
+       'credits_activate_retry',
+           'request',
+       '@every 5m',
+       1,
+       'ai激活赠送积分重试（每5分钟执行一次) ',
+       'order-api',
+       'POST',
+       '/api/back_stage/business/mg/credits/activate_retry',
+       '',
+       '',
+       '{"source_from":"task_scheduler"}',
+       now() + interval '8 hour',
+       now() + interval '8 hour');`).Beautify())
 	//fmt.Println(Parse(`insert into test (aaa,bbb,ccc,ddd) select aaa,bbb,ccc,ddd from test_backup`).Beautify())
 }
