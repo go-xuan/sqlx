@@ -1,7 +1,6 @@
 package beautify
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/go-xuan/sqlx/consts"
@@ -34,14 +33,14 @@ type Insert struct {
 }
 
 func (x *Insert) Beautify() string {
-	var sql = strings.Builder{}
-	sql.WriteString(x.beautifyInsert())
-	sql.WriteString(x.beautifyFields())
-	sql.WriteString(x.beautifyValues())
-	if replacer := x.replacer; replacer != nil {
-		return replacer.Replace(sql.String())
+	var builder = strings.Builder{}
+	builder.WriteString(x.beautifyInsert())
+	builder.WriteString(x.beautifyFields())
+	builder.WriteString(x.beautifyValues())
+	if sql, replacer := builder.String(), x.replacer; replacer != nil {
+		return replacer.Replace(sql)
 	} else {
-		return sql.String()
+		return sql
 	}
 }
 
@@ -86,10 +85,10 @@ func (x *Insert) beautifyFields() string {
 
 // 构建查询字段sql
 func (x *Insert) beautifyValues() string {
-	var sql = strings.Builder{}
 	if x.Query != nil {
-		sql.WriteString(x.Query.Beautify())
+		return x.Query.Beautify()
 	} else if x.ValueData != nil {
+		var sql = strings.Builder{}
 		var nextLine bool
 		if len(x.Fields) >= 10 {
 			nextLine = true
@@ -121,8 +120,9 @@ func (x *Insert) beautifyValues() string {
 				sql.WriteString(consts.RightBracket)
 			}
 		}
+		return sql.String()
 	}
-	return sql.String()
+	return ""
 }
 
 func (x *Insert) parseTable() *Insert {
@@ -155,6 +155,7 @@ func (x *Insert) extractFields() *Insert {
 	if names := strings.Split(sql, consts.Comma); len(names) > 0 {
 		var fields []*Field
 		for _, name := range names {
+			name = strings.TrimSpace(name)
 			fields = append(fields, &Field{Name: name})
 		}
 		x.Fields = fields
@@ -195,10 +196,13 @@ func (x *Insert) extractValues() *Insert {
 			x.ValueData = append(x.ValueData, values)
 		} else {
 			var names []string
-			for _, field := range x.Fields {
-				names = append(names, field.Name)
+			max := len(values)
+			for i, field := range x.Fields {
+				if i < max {
+					names = append(names, field.Name+" : "+x.replacer.Replace(values[i]))
+				}
 			}
-			panic(fmt.Sprintf("insert字段数量和insert值数量不匹配：%v != %v", names, values))
+			panic("insert字段数量和insert值数量不匹配: \n" + strings.Join(names, "\n"))
 		}
 	}
 

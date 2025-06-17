@@ -47,18 +47,18 @@ func (x *Select) Beautify() string {
 	if x.simple {
 		return x.originSql
 	}
-	var sql = strings.Builder{}
-	sql.WriteString(x.beautifySelect())
-	sql.WriteString(x.beautifyFrom())
-	sql.WriteString(x.beautifyWhere())
-	sql.WriteString(x.beautifyGroupBy())
-	sql.WriteString(x.beautifyHaving())
-	sql.WriteString(x.beautifyOrderBy())
-	sql.WriteString(x.beautifyLimit())
-	if replacer := x.replacer; replacer != nil {
-		return replacer.Replace(sql.String())
+	var builder = strings.Builder{}
+	builder.WriteString(x.beautifySelect())
+	builder.WriteString(x.beautifyFrom())
+	builder.WriteString(x.beautifyWhere())
+	builder.WriteString(x.beautifyGroupBy())
+	builder.WriteString(x.beautifyHaving())
+	builder.WriteString(x.beautifyOrderBy())
+	builder.WriteString(x.beautifyLimit())
+	if sql, replacer := builder.String(), x.replacer; replacer != nil {
+		return replacer.Replace(sql)
 	} else {
-		return sql.String()
+		return sql
 	}
 }
 
