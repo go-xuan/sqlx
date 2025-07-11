@@ -102,7 +102,7 @@ func SplitExcludeInBracket(sql, key string) ([]string, string) {
 	return slice, sql[offset:]
 }
 
-// IndexExcludeBrackets 获取关键字下标但排除略括号内的关键字
+// IndexExcludeBrackets 获取关键字下标但排除括号内的关键字
 func IndexExcludeBrackets(sql, key string, pure bool) int {
 	var sl, kl, brackets = len(sql), len(key), 0
 	for i := 0; i < sl-kl; i++ {
@@ -311,7 +311,7 @@ func BetweenOfString(str, start, end string) (from, to int) {
 	return
 }
 
-// indicesOfString 获取所有下标, x：命中数量
+// indicesOfString 获取所有下标, size：命中数量
 func indicesOfString(sql, str string, size ...int) []int {
 	var s = 0
 	if size[0] > 0 {
