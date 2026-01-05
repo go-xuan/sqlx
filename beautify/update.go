@@ -11,7 +11,7 @@ import (
 func ParseUpdateSQL(sql string, indent ...int) *Update {
 	// sql初始化
 	var parser = &Update{
-		Base: NewBase(sql, indent...),
+		SQL: NewSQL(sql, indent...),
 	}
 	// sql解析
 	parser.parsePrepare() // 解析准备
@@ -24,7 +24,7 @@ func ParseUpdateSQL(sql string, indent ...int) *Update {
 }
 
 type Update struct {
-	Base
+	SQL
 	Table  *Table       // 更新表
 	Fields []*Field     // 更新字段
 	Where  []*Condition // 查询条件
@@ -54,31 +54,30 @@ func (x *Update) beautifyUpdate() string {
 
 // 构建更新字段
 func (x *Update) beautifyFields() string {
-	var sql = strings.Builder{}
 	var maxLen int
 	for _, field := range x.Fields {
-		l := len(field.Name)
-		if maxLen < l {
+		if l := len(field.Name); maxLen < l {
 			maxLen = l
 		}
 	}
-	var i int
+	var sql, first = strings.Builder{}, true
 	for _, field := range x.Fields {
-		if value := field.Value; value != "" {
-			if i == 0 {
+		name, value := field.Name, field.Value
+		if value != "" {
+			if first {
 				sql.WriteString(x.align(consts.SET))
 			} else {
 				sql.WriteString(consts.Comma)
 				sql.WriteString(consts.NextLine)
 				sql.WriteString(x.align())
 			}
+			first = false
 			sql.WriteString(consts.Blank)
-			sql.WriteString(field.Name)
-			sql.WriteString(strings.Repeat(consts.Blank, maxLen-len(field.Name)+1))
+			sql.WriteString(name)
+			sql.WriteString(strings.Repeat(consts.Blank, maxLen-len(name)+1))
 			sql.WriteString(consts.EQ)
 			sql.WriteString(consts.Blank)
-			sql.WriteString(field.Value)
-			i++
+			sql.WriteString(value)
 		}
 	}
 	return sql.String()
@@ -100,18 +99,18 @@ func (x *Update) beautifyCondition() string {
 		for i, condition := range conditions {
 			if i > 0 {
 				sql.WriteString(consts.NextLine)
-				if condition.AndOr == consts.Empty {
+				if condition.LogicalOperators == consts.Empty {
 					sql.WriteString(x.align(consts.AND))
 					sql.WriteString(consts.Blank)
 				} else {
-					sql.WriteString(x.align(condition.AndOr))
+					sql.WriteString(x.align(condition.LogicalOperators))
 					sql.WriteString(consts.Blank)
 				}
 			}
 			if condition.Name != "" {
 				sql.WriteString(condition.Name)
 				sql.WriteString(strings.Repeat(consts.Blank, maxLen-len(condition.Name)+1))
-				sql.WriteString(condition.Operator)
+				sql.WriteString(condition.ComparisonOperators)
 				sql.WriteString(consts.Blank)
 			}
 			sql.WriteString(condition.Value)
@@ -122,7 +121,7 @@ func (x *Update) beautifyCondition() string {
 }
 
 func (x *Update) parseTable() *Update {
-	sql := x.tempSql
+	sql := x.temp
 	// 去除update关键字
 	if strings.HasPrefix(sql, consts.UPDATE) {
 		sql = sql[7:]
@@ -132,9 +131,9 @@ func (x *Update) parseTable() *Update {
 		sql = sql[5:]
 	}
 	// 根据set关键字进行拆分
-	if index := utils.IndexOfKeywordFirst(sql, consts.SET); index >= 0 {
-		x.tempSql = sql[index:]
-		sql = sql[:index]
+	if first := utils.IndexOfKeywordFirst(sql, consts.SET); first >= 0 {
+		x.temp = sql[first:]
+		sql = sql[:first]
 	}
 	var name, alias string
 	if index := utils.IndexOfString(sql, consts.Blank, 1); index >= 0 {
@@ -150,15 +149,15 @@ func (x *Update) parseTable() *Update {
 
 // 提取字段
 func (x *Update) parseFields() *Update {
-	sql := x.tempSql
+	sql := x.temp
 	// 根据where关键字进行拆分
-	if index := utils.IndexOfKeywordFirst(sql, consts.WHERE); index > 0 {
-		x.tempSql = sql[index:]
-		sql = sql[:index]
+	if first := utils.IndexOfKeywordFirst(sql, consts.WHERE); first > 0 {
+		x.temp = sql[first:]
+		sql = sql[:first]
 	}
 	// 截取where关键字前面的sql片段
-	if index := utils.IndexOfKeywordFirst(sql, consts.SET); index >= 0 {
-		sql = sql[index+4:]
+	if first := utils.IndexOfKeywordFirst(sql, consts.SET); first >= 0 {
+		sql = sql[first+4:]
 		list, last := utils.SplitExcludeInBracket(sql, consts.Comma)
 		list = append(list, last)
 		var fields []*Field
@@ -171,7 +170,10 @@ func (x *Update) parseFields() *Update {
 			if utils.IndexOfString(name, consts.ReplacePrefix) >= 0 {
 				name = x.replacer.Replace(name)
 			}
-			fields = append(fields, &Field{Name: name, Value: value})
+			fields = append(fields, &Field{
+				Name:  name,
+				Value: value,
+			})
 		}
 		x.Fields = fields
 	}
@@ -180,8 +182,8 @@ func (x *Update) parseFields() *Update {
 
 // 提取查询条件
 func (x *Update) parseWhere() *Update {
-	if sql := x.tempSql; sql != "" {
-		x.Where, x.tempSql = ExtractWhere(sql)
+	if sql := x.temp; sql != "" {
+		x.Where, x.temp = ExtractWhere(sql)
 	}
 	return x
 }

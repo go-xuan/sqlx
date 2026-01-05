@@ -11,7 +11,7 @@ import (
 func ParseInsertSQL(sql string, indent ...int) *Insert {
 	// sql初始化
 	var parser = &Insert{
-		Base: NewBase(sql, indent...),
+		SQL: NewSQL(sql, indent...),
 	}
 
 	// sql解析
@@ -25,7 +25,7 @@ func ParseInsertSQL(sql string, indent ...int) *Insert {
 }
 
 type Insert struct {
-	Base
+	SQL
 	Table     *Table     // 插入表
 	Fields    []*Field   // 插入字段
 	ValueData [][]string // 插入值
@@ -126,13 +126,13 @@ func (x *Insert) beautifyValues() string {
 }
 
 func (x *Insert) parseTable() *Insert {
-	sql := x.tempSql
+	sql := x.temp
 	// 去除insert关键字
-	if index := utils.IndexOfKeywordFirst(sql, consts.INSERT); index == 0 {
+	if first := utils.IndexOfKeywordFirst(sql, consts.INSERT); first == 0 {
 		sql = sql[7:]
 	}
 	// 去除into关键字
-	if index := utils.IndexOfKeywordFirst(sql, consts.INTO); index == 0 {
+	if first := utils.IndexOfKeywordFirst(sql, consts.INTO); first == 0 {
 		sql = sql[5:]
 	}
 	// 根据set关键字进行拆分
@@ -140,16 +140,16 @@ func (x *Insert) parseTable() *Insert {
 		x.Table = &Table{
 			Name: strings.TrimSpace(sql[:index-1]),
 		}
-		x.tempSql = sql[index:]
+		x.temp = sql[index:]
 	}
 	return x
 }
 
 func (x *Insert) extractFields() *Insert {
-	sql := x.tempSql
+	sql := x.temp
 	// 根据set关键字进行拆分
 	if from, to := utils.BetweenOfString(sql, consts.LeftBracket, consts.RightBracket); from >= 0 && from < to {
-		x.tempSql = sql[to+2:]
+		x.temp = sql[to+2:]
 		sql = sql[from+1 : to]
 	}
 	if names := strings.Split(sql, consts.Comma); len(names) > 0 {
@@ -164,8 +164,8 @@ func (x *Insert) extractFields() *Insert {
 }
 
 func (x *Insert) extractValues() *Insert {
-	sql := strings.TrimLeft(x.tempSql, consts.Blank)
-	if index := utils.IndexOfKeywordFirst(sql, consts.SELECT); index == 0 {
+	sql := strings.TrimLeft(x.temp, consts.Blank)
+	if first := utils.IndexOfKeywordFirst(sql, consts.SELECT); first == 0 {
 		if query := ParseSelectSQL(sql); query != nil && len(query.Fields) == len(x.Fields) {
 			x.Query = query
 		} else {
@@ -174,11 +174,11 @@ func (x *Insert) extractValues() *Insert {
 		return x
 	}
 	// 去除values关键字
-	if index := utils.IndexOfKeywordFirst(sql, consts.VALUES); index == 0 {
+	if first := utils.IndexOfKeywordFirst(sql, consts.VALUES); first == 0 {
 		sql = sql[7:]
 	}
 
-	if index := utils.IndexOfKeywordFirst(sql, consts.VALUE); index == 0 {
+	if first := utils.IndexOfKeywordFirst(sql, consts.VALUE); first == 0 {
 		sql = sql[6:]
 	}
 
@@ -196,9 +196,8 @@ func (x *Insert) extractValues() *Insert {
 			x.ValueData = append(x.ValueData, values)
 		} else {
 			var names []string
-			max := len(values)
 			for i, field := range x.Fields {
-				if i < max {
+				if i < len(values) {
 					names = append(names, field.Name+" : "+x.replacer.Replace(values[i]))
 				}
 			}
@@ -208,13 +207,3 @@ func (x *Insert) extractValues() *Insert {
 
 	return x
 }
-
-//func (x *Insert) addFieldValue(valuesSql string) {
-//	if values := utils.SplitValuesSql(valuesSql); len(values) == len(x.Fields) {
-//		for i, field := range x.Fields {
-//			field.ValueData = append(field.ValueData, strings.TrimSpace(values[i]))
-//		}
-//	} else {
-//		panic(valuesSql + " the number of insert values does not match")
-//	}
-//}

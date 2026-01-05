@@ -11,7 +11,7 @@ import (
 func ParseDeleteSQL(sql string, indent ...int) *Delete {
 	// sql初始化
 	var parser = &Delete{
-		Base: NewBase(sql, indent...),
+		SQL: NewSQL(sql, indent...),
 	}
 
 	// sql解析
@@ -24,7 +24,7 @@ func ParseDeleteSQL(sql string, indent ...int) *Delete {
 }
 
 type Delete struct {
-	Base
+	SQL
 	Table *Table       // 删除表
 	Where []*Condition // 查询条件
 }
@@ -34,7 +34,7 @@ func (x *Delete) Beautify() string {
 }
 
 func (x *Delete) parseTable() *Delete {
-	sql := x.tempSql
+	sql := x.temp
 	// 去除update关键字
 	if strings.HasPrefix(sql, consts.DELETE) {
 		sql = sql[7:]
@@ -44,9 +44,9 @@ func (x *Delete) parseTable() *Delete {
 		sql = sql[5:]
 	}
 	// 根据where关键字进行拆分
-	if index := utils.IndexOfKeywordFirst(sql, consts.WHERE); index >= 0 {
-		x.tempSql = sql[index:]
-		sql = sql[:index]
+	if first := utils.IndexOfKeywordFirst(sql, consts.WHERE); first >= 0 {
+		x.temp = sql[first:]
+		sql = sql[:first]
 	}
 	var name, alias string
 	if index := utils.IndexOfString(sql, consts.Blank, 1); index >= 0 {
@@ -62,8 +62,8 @@ func (x *Delete) parseTable() *Delete {
 
 // 提取查询条件
 func (x *Delete) parseWhere() *Delete {
-	if sql := x.tempSql; sql != "" {
-		x.Where, x.tempSql = ExtractWhere(sql)
+	if sql := x.temp; sql != "" {
+		x.Where, x.temp = ExtractWhere(sql)
 	}
 	return x
 }

@@ -7,48 +7,43 @@ import (
 	"github.com/go-xuan/sqlx/utils"
 )
 
-// NewBase 初始化SQL解析器base
-func NewBase(sql string, indent ...int) Base {
-	var base = Base{
-		originSql: sql,
-		tempSql:   sql,
-		indent:    6,
+// NewSQL 初始化SQL
+func NewSQL(sql string, indent ...int) SQL {
+	return SQL{
+		origin: sql,
+		temp:   sql,
+		indent: 6 + indent[0],
 	}
-	if len(indent) > 0 { // 累加缩缩进
-		base.indent += indent[0]
-	}
-	return base
 }
 
-// Base SQL解析器base
-type Base struct {
-	originSql string            // 原始sql，原始完整sql（变量值需要通过 replacer 进行还原）
-	tempSql   string            // 临时sql，存储每个步骤经过sql拆解之后的sql片段
-	indent    int               // 缩进量
-	simple    bool              // 简单sql
-	replacer  *strings.Replacer // 变量值替换器，consts.ReplacePrefix + 编号 + consts.ReplaceSuffix
+// SQL 解析器base
+type SQL struct {
+	origin   string            // 原始sql，原始完整sql（变量值需要通过 replacer 进行还原）
+	temp     string            // 临时sql，存储每个步骤经过sql拆解之后的sql片段
+	indent   int               // 缩进，初始值为6
+	replacer *strings.Replacer // 变量值替换器，consts.ReplacePrefix + 编号 + consts.ReplaceSuffix
 }
 
 // 解析准备
-func (b *Base) parsePrepare() {
-	sql := b.tempSql
+func (s *SQL) parsePrepare() {
+	sql := s.temp
 	// 解析sql中所有的参数值，避免参数值值影响后续sql解析
 	var replacer *strings.Replacer
 	if sql, replacer = utils.ParseValuesInSql(sql); replacer != nil {
-		b.replacer = replacer
+		s.replacer = replacer
 	}
 	// 将sql中所有关键字转为小写
-	b.tempSql = utils.AllKeywordsToLower(sql)
+	s.temp = utils.AllKeywordsToLower(sql)
 }
 
 // 解析完成
-func (b *Base) parseFinish() {
-	b.tempSql = ""
+func (s *SQL) parseFinish() {
+	s.temp = ""
 }
 
 // 以当前缩进量对齐
-func (b *Base) align(key ...string) string {
-	return Align(b.indent, key...)
+func (s *SQL) align(key ...string) string {
+	return Align(s.indent, key...)
 }
 
 // Align 根据缩进量对齐
@@ -67,9 +62,9 @@ func Align(indent int, key ...string) string {
 // ExtractWhere 提取条件
 func ExtractWhere(sql string) ([]*Condition, string) {
 	if sql != "" {
-		if index := utils.IndexOfKeywordFirst(sql, consts.WHERE); index >= 0 {
+		if first := utils.IndexOfKeywordFirst(sql, consts.WHERE); first >= 0 {
 			// 去除where关键字
-			sql = sql[index+5:]
+			sql = sql[first+5:]
 			// 提取where部分sql
 			var whereSql string
 			if _, end := utils.ContainsKeywords(sql, consts.GROUPBY, consts.ORDERBY, consts.LIMIT); end >= 0 {
@@ -89,16 +84,16 @@ func NewConditions(sql string) []*Condition {
 	// 去除前后多余括号
 	sql = utils.TrimBrackets(sql)
 	var conditions []*Condition
-	var loop, andOr = true, ""
+	var loop, logical = true, ""
 	for loop {
 		if index := utils.IndexExcludeBrackets(sql, consts.AND, true); index > 0 {
-			conditions = append(conditions, NewCondition(sql[:index], andOr))
-			sql, andOr = sql[index+4:], consts.AND
+			conditions = append(conditions, NewCondition(sql[:index], logical))
+			sql, logical = sql[index+4:], consts.AND
 		} else if index = utils.IndexExcludeBrackets(sql, consts.OR, true); index > 0 {
-			conditions = append(conditions, NewCondition(sql[:index], andOr))
-			sql, andOr = sql[index+3:], consts.OR
+			conditions = append(conditions, NewCondition(sql[:index], logical))
+			sql, logical = sql[index+3:], consts.OR
 		} else {
-			conditions = append(conditions, NewCondition(sql, andOr))
+			conditions = append(conditions, NewCondition(sql, logical))
 			loop = false
 		}
 	}
@@ -106,55 +101,55 @@ func NewConditions(sql string) []*Condition {
 }
 
 // NewCondition 单个条件
-func NewCondition(sql string, andOr string) *Condition {
+func NewCondition(sql string, logical string) *Condition {
 	// 去除前后空格
 	sql = strings.TrimSpace(sql)
-	var condition = &Condition{AndOr: andOr}
+	var condition = &Condition{LogicalOperators: logical}
 	if from, to := utils.BetweenOfString(sql, consts.LeftBracket, consts.RightBracket); from == 0 && to == len(sql)-1 {
 		condition.Conditions = NewConditions(sql[from+1 : to]) // ()括号在前后两端表示是联合子条件
 	} else if index := utils.IndexExcludeBrackets(sql, consts.NE, true); index > 0 {
 		condition.Name = sql[:index-1]
-		condition.Operator = sql[index : index+2]
+		condition.ComparisonOperators = sql[index : index+2]
 		condition.Value = sql[index+3:]
 	} else if index = utils.IndexExcludeBrackets(sql, consts.GE, true); index > 0 {
 		condition.Name = sql[:index-1]
-		condition.Operator = sql[index : index+2]
+		condition.ComparisonOperators = sql[index : index+2]
 		condition.Value = sql[index+3:]
 	} else if index = utils.IndexExcludeBrackets(sql, consts.LE, true); index > 0 {
 		condition.Name = sql[:index-1]
-		condition.Operator = sql[index : index+2]
+		condition.ComparisonOperators = sql[index : index+2]
 		condition.Value = sql[index+3:]
 	} else if index = utils.IndexExcludeBrackets(sql, consts.EQ, true); index > 0 {
 		condition.Name = sql[:index-1]
-		condition.Operator = sql[index : index+1]
+		condition.ComparisonOperators = sql[index : index+1]
 		condition.Value = sql[index+2:]
 	} else if index = utils.IndexExcludeBrackets(sql, consts.LT, true); index > 0 {
 		condition.Name = sql[:index-1]
-		condition.Operator = sql[index : index+1]
+		condition.ComparisonOperators = sql[index : index+1]
 		condition.Value = sql[index+2:]
 	} else if index = utils.IndexExcludeBrackets(sql, consts.GT, true); index > 0 {
 		condition.Name = sql[:index-1]
-		condition.Operator = sql[index : index+1]
+		condition.ComparisonOperators = sql[index : index+1]
 		condition.Value = sql[index+2:]
 	} else if index = utils.IndexExcludeBrackets(sql, consts.LIKE, true); index > 0 {
 		condition.Name = sql[:index-1]
-		condition.Operator = sql[index : index+4]
+		condition.ComparisonOperators = sql[index : index+4]
 		condition.Value = sql[index+5:]
 	} else if index = utils.IndexExcludeBrackets(sql, consts.NOTIN, true); index > 0 {
 		condition.Name = sql[:index-1]
-		condition.Operator = sql[index : index+6]
-		condition.parseIn(sql[index+7:])
+		condition.ComparisonOperators = sql[index : index+6]
+		condition.parseIN(sql[index+7:])
 	} else if index = utils.IndexExcludeBrackets(sql, consts.IN, true); index > 0 {
 		condition.Name = sql[:index-1]
-		condition.Operator = sql[index : index+2]
-		condition.parseIn(sql[index+3:])
+		condition.ComparisonOperators = sql[index : index+2]
+		condition.parseIN(sql[index+3:])
 	} else if index = utils.IndexExcludeBrackets(sql, consts.ISNOT, true); index > 0 {
 		condition.Name = sql[:index-1]
-		condition.Operator = sql[index : index+6]
+		condition.ComparisonOperators = sql[index : index+6]
 		condition.Value = sql[index+7:]
 	} else if index = utils.IndexExcludeBrackets(sql, consts.IS, true); index > 0 {
 		condition.Name = sql[:index-1]
-		condition.Operator = sql[index : index+2]
+		condition.ComparisonOperators = sql[index : index+2]
 		condition.Value = sql[index+3:]
 	} else {
 		condition.Name = sql
@@ -171,18 +166,18 @@ type Join struct {
 
 // Condition 查询条件解析
 type Condition struct {
-	AndOr      string       // and/or
-	Name       string       // 字段
-	Operator   string       // 运算符（=、!=、like、in、not in、is、is not）
-	Value      string       // 值
-	Values     []string     // in值
-	Select     *Select      // 子查询
-	Conditions []*Condition // 子条件
+	Name                string       // 字段
+	Value               string       // 值
+	Values              []string     // in值
+	LogicalOperators    string       // 逻辑运算符：and、or
+	ComparisonOperators string       // 比较运算符：=、!=、like、in、not in、is、is not
+	Select              *Select      // 子查询
+	Conditions          []*Condition // 子条件
 }
 
-func (c *Condition) parseIn(sql string) {
+func (c *Condition) parseIN(sql string) {
 	sql = strings.Trim(sql, "() ;")
-	if index := utils.IndexOfKeywordFirst(sql, consts.SELECT); index >= 0 {
+	if first := utils.IndexOfKeywordFirst(sql, consts.SELECT); first >= 0 {
 		indent := len(c.Name) + 12
 		c.Select = ParseSelectSQL(sql, indent)
 	} else {
@@ -190,11 +185,33 @@ func (c *Condition) parseIn(sql string) {
 	}
 }
 
+func (c *Condition) getIN(indent int) string {
+	sql := strings.Builder{}
+	sql.WriteString(consts.LeftBracket)
+	if len(c.Values) > 0 {
+		nextLine := len(c.Values) > 3
+		for i, value := range c.Values {
+			if i > 0 {
+				sql.WriteString(consts.Comma)
+				sql.WriteString(consts.Blank)
+				if nextLine {
+					sql.WriteString(consts.NextLine)
+					sql.WriteString(Align(indent))
+				}
+			}
+			sql.WriteString(value)
+		}
+	} else {
+		sql.WriteString(c.Select.Beautify())
+	}
+	sql.WriteString(consts.RightBracket)
+	return sql.String()
+}
+
 func (c *Condition) beautify(indent int) string {
 	var sql = strings.Builder{}
-	if c.AndOr != "" {
-		// 增加缩进
-		sql.WriteString(Align(indent, c.AndOr))
+	if c.LogicalOperators != "" {
+		sql.WriteString(Align(indent, c.LogicalOperators))
 		sql.WriteString(consts.Blank)
 	}
 	if len(c.Conditions) > 0 { // 联合子条件
@@ -207,30 +224,12 @@ func (c *Condition) beautify(indent int) string {
 		}
 		sql.WriteString(")")
 	} else { // 单条件
-		indent = indent + len(c.Name) + 6
 		sql.WriteString(c.Name)
 		sql.WriteString(consts.Blank)
-		sql.WriteString(c.Operator)
+		sql.WriteString(c.ComparisonOperators)
 		sql.WriteString(consts.Blank)
-		if c.Operator == consts.IN || c.Operator == consts.NOTIN {
-			sql.WriteString(consts.LeftBracket)
-			if len(c.Values) > 0 {
-				var nextLine = len(c.Values) > 3
-				for i, value := range c.Values {
-					if i > 0 {
-						sql.WriteString(consts.Comma)
-						sql.WriteString(consts.Blank)
-						if nextLine {
-							sql.WriteString(consts.NextLine)
-							sql.WriteString(Align(indent))
-						}
-					}
-					sql.WriteString(value)
-				}
-			} else {
-				sql.WriteString(c.Select.Beautify())
-			}
-			sql.WriteString(consts.RightBracket)
+		if c.ComparisonOperators == consts.IN || c.ComparisonOperators == consts.NOTIN {
+			sql.WriteString(c.getIN(indent + len(c.Name) + 6))
 		} else {
 			sql.WriteString(c.Value)
 		}
@@ -263,7 +262,8 @@ func ExtractTable(sql string, indent int) (*Table, string) {
 	}
 	if sql != "" {
 		var alias string
-		if _, index := utils.ContainsKeywords(sql, consts.LEFT, consts.RIGHT, consts.INNER, consts.OUTER, consts.JOIN, consts.WHERE, consts.GROUPBY, consts.ORDERBY, consts.LIMIT); index >= 0 {
+		if _, index := utils.ContainsKeywords(sql, consts.LEFT, consts.RIGHT, consts.INNER, consts.OUTER, consts.JOIN,
+			consts.WHERE, consts.GROUPBY, consts.ORDERBY, consts.LIMIT); index >= 0 {
 			// 判断是否是复杂查询
 			alias, sql = sql[:index], sql[index:]
 		} else { // 简单查询
@@ -281,22 +281,22 @@ type Table struct {
 	Select *Select // 子查询
 }
 
-func (p *Table) beautify(withAs ...bool) string {
+func (t *Table) beautify(withAs ...bool) string {
 	sql := strings.Builder{}
-	if p.Select != nil {
+	if t.Select != nil {
 		sql.WriteString(consts.LeftBracket)
-		sql.WriteString(p.Select.Beautify())
+		sql.WriteString(t.Select.Beautify())
 		sql.WriteString(consts.RightBracket)
 	} else {
-		sql.WriteString(p.Name)
+		sql.WriteString(t.Name)
 	}
-	if p.Alias != "" {
+	if t.Alias != "" {
 		if len(withAs) > 0 && withAs[0] {
 			sql.WriteString(consts.Blank)
 			sql.WriteString(consts.AS)
 		}
 		sql.WriteString(consts.Blank)
-		sql.WriteString(p.Alias)
+		sql.WriteString(t.Alias)
 	}
 	return sql.String()
 
@@ -304,14 +304,7 @@ func (p *Table) beautify(withAs ...bool) string {
 
 // Field 字段解析
 type Field struct {
-	Name      string // 字段名
-	Alias     string // 字段别名，仅查询使用
-	Table     string // 表名
-	Value     string // 字段值
-	Type      string // 字段类型
-	Precision int    // 长度
-	Scale     int    // 小数点
-	Nullable  bool   // 允许为空
-	Default   string // 默认值
-	Comment   string // 注释
+	Name  string // 字段名
+	Alias string // 字段别名，仅查询使用
+	Value string // 字段值
 }

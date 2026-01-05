@@ -2,9 +2,10 @@ package utils
 
 import (
 	"fmt"
-	"github.com/go-xuan/sqlx/consts"
 	"strings"
 	"testing"
+
+	"github.com/go-xuan/sqlx/consts"
 )
 
 func TestKeywordIndexOfSql(t *testing.T) {

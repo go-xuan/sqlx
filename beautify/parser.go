@@ -1,18 +1,21 @@
 package beautify
 
 import (
-	"regexp"
 	"strings"
 
 	"github.com/go-xuan/sqlx/consts"
+	"github.com/go-xuan/sqlx/utils"
 )
 
+// IParser SQL解析器
+type IParser interface {
+	Beautify() string
+}
+
 func Parse(sql string) IParser {
-	sql = strings.ReplaceAll(sql, consts.NextLine, consts.Blank)        // 移除换行
-	sql = regexp.MustCompile(`\s+`).ReplaceAllString(sql, consts.Blank) // 去除多余空格
-	sql = strings.TrimSpace(sql)                                        // 去除空格
-	sql = strings.TrimPrefix(sql, consts.Semicolon)                     // 去除末尾分号
-	switch t := strings.ToLower(sql[:6]); t {                           // 根据sql查询语句开头关键字判断sql类型
+	// 折叠sql
+	sql = utils.CollapseSql(sql)
+	switch t := strings.ToLower(sql[:6]); t {
 	case consts.SELECT:
 		return ParseSelectSQL(sql)
 	case consts.UPDATE:
@@ -24,9 +27,4 @@ func Parse(sql string) IParser {
 	default:
 		panic("当前输入sql无法解析 " + sql)
 	}
-}
-
-// IParser SQL解析器
-type IParser interface {
-	Beautify() string
 }
