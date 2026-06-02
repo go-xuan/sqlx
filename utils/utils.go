@@ -8,16 +8,23 @@ import (
 	"github.com/go-xuan/sqlx/consts"
 )
 
-type SqlUtils struct {
-	sql string
+var whitespaceRe = regexp.MustCompile(`\s+`)
+
+// CollapseSql 折叠sql，去除换行、多余空格、首尾空格、末尾分号
+func CollapseSql(sql string) string {
+	sql = strings.ReplaceAll(sql, consts.NextLine, consts.Blank)        // 移除换行
+	sql = whitespaceRe.ReplaceAllString(sql, consts.Blank) // 去除多余空格
+	sql = strings.TrimSpace(sql)                                        // 去除首尾空格
+	sql = strings.TrimSuffix(sql, consts.Semicolon)                     // 去除末尾分号
+	return sql
 }
 
 // ExtractAlias 提取别名
 func ExtractAlias(sql string) string {
 	sql = strings.TrimSpace(sql)
-	if index := IndexOfKeywordFirst(sql, consts.AS); index >= 0 {
-		return sql[index+3:]
-	} else if index = IndexOfString(sql, consts.Blank); index >= 0 {
+	if first := IndexOfKeywordFirst(sql, consts.AS); first >= 0 {
+		return sql[first+3:]
+	} else if index := IndexOfString(sql, consts.Blank); index >= 0 {
 		return sql[index+1:]
 	} else {
 		return sql
@@ -44,7 +51,7 @@ func ParseValuesInSql(sql string) (string, *strings.Replacer) {
 func AllKeywordsToLower(sql string) string {
 	var oldnew []string
 	var KEYWORDS = []string{
-		consts.SELECT, consts.UPDATE, consts.DELETE, consts.INSERT, consts.INTO, consts.VALUES, consts.VALUES,
+		consts.SELECT, consts.UPDATE, consts.DELETE, consts.INSERT, consts.INTO, consts.VALUES,
 		consts.FROM, consts.WHERE, consts.SET, consts.JOIN, consts.GROUP, consts.ORDER, consts.HAVING, consts.LIMIT, consts.OFFSET,
 		consts.ASC, consts.DESC, consts.CASE, consts.WHEN, consts.THEN, consts.END, consts.INNER, consts.OUTER, consts.LEFT, consts.RIGHT,
 		consts.DISTINCT, consts.PARTITION, consts.OVER, consts.AS, consts.AND, consts.ON, consts.OR, consts.IN, consts.NOT, consts.LIKE, consts.BY,
@@ -102,7 +109,7 @@ func SplitExcludeInBracket(sql, key string) ([]string, string) {
 	return slice, sql[offset:]
 }
 
-// IndexExcludeBrackets 获取关键字下标但排除略括号内的关键字
+// IndexExcludeBrackets 获取关键字下标但排除括号内的关键字
 func IndexExcludeBrackets(sql, key string, pure bool) int {
 	var sl, kl, brackets = len(sql), len(key), 0
 	for i := 0; i < sl-kl; i++ {
@@ -123,17 +130,29 @@ func IndexExcludeBrackets(sql, key string, pure bool) int {
 	return -1
 }
 
-// ContainsKeywords 是否包含sql关键字
+// ContainsKeywords 是否包含sql关键字，返回最早出现的关键字及其下标
 func ContainsKeywords(sql string, keys ...string) (string, int) {
 	var hit, index = "", -1
 	for _, key := range keys {
-		if i := IndexOfKeywordFirst(sql, key); i >= 0 {
-			if i < index {
-				hit, index = key, i
-			} else if index == -1 {
-				hit, index = key, i
+		if first := IndexOfKeywordFirst(sql, key); first >= 0 {
+			if index == -1 || first < index {
+				hit, index = key, first
 			}
 		}
+	}
+	return hit, index
+}
+
+// FirstIndexOfKeys 获取多个关键字中任一关键字首次命中下标
+func FirstIndexOfKeys(sql string, keys ...string) (string, int) {
+	var hit, index = "", len(sql)
+	for _, key := range keys {
+		if first := IndexOfKeywordFirst(sql, key); first >= 0 && first < index {
+			hit, index = key, first
+		}
+	}
+	if index == len(sql) {
+		index = -1
 	}
 	return hit, index
 }
@@ -142,24 +161,9 @@ func ContainsKeywords(sql string, keys ...string) (string, int) {
 func LastIndexOfKeys(sql string, keys ...string) (string, int) {
 	var hit, index = "", -1
 	for _, key := range keys {
-		if i := IndexOfKeywordLast(sql, key); i >= 0 && i > index {
-			hit, index = key, i
+		if last := IndexOfKeywordLast(sql, key); last > index {
+			hit, index = key, last
 		}
-	}
-	return hit, index
-}
-
-// FirstIndexOfKeys 获取多个关键字中任一关键字首次命中下标
-func FirstIndexOfKeys(sql string, keys ...string) (string, int) {
-	var max = len(sql) - 1
-	var hit, index = "", max
-	for _, key := range keys {
-		if i := IndexOfKeywordFirst(sql, key); i >= 0 && i < index {
-			index = i
-		}
-	}
-	if index == max {
-		index = -1
 	}
 	return hit, index
 }
@@ -168,16 +172,16 @@ func FirstIndexOfKeys(sql string, keys ...string) (string, int) {
 func IndicesOfKeyword(sql, key string, size ...int) []int {
 	if sl, kl := len(sql), len(key); sl >= kl {
 		var s, n = 0, 0
-		if size[0] > 0 {
+		if len(size) > 0 && size[0] > 0 {
 			s = size[0]
 		}
 		var indices []int
 		var index, offset int
 		for n <= s || s == 0 {
-			if newIndex := IndexOfKeywordFirst(sql, key); newIndex >= 0 {
-				index = offset + newIndex
+			if first := IndexOfKeywordFirst(sql, key); first >= 0 {
+				index = offset + first
 				offset = index + kl
-				sql = sql[newIndex+kl:]
+				sql = sql[first+kl:]
 				indices = append(indices, index)
 				n++
 			} else {
@@ -191,68 +195,68 @@ func IndicesOfKeyword(sql, key string, size ...int) []int {
 
 // IndexOfKeyword 获取关键字的正向N次出现下标
 func IndexOfKeyword(sql, key string, position int) int {
-	if sl, kl := len(sql), len(key); sl < kl || position == 0 {
+	var sl, kl = len(sql), len(key)
+	if sl < kl || position == 0 {
 		return -1
-	} else if position > 0 {
-		var index, offset int
-		for i := 0; i < position; i++ {
-			if newIndex := IndexOfKeywordFirst(sql, key); newIndex >= 0 {
-				index = offset + newIndex
-				offset = index + kl
-				sql = sql[newIndex+kl:]
-			} else {
-				index = -1
-				break
-			}
-		}
-		return index
-	} else {
-		var index = -1
-		for i := 0; i > position; i-- {
-			if index = IndexOfKeywordLast(sql, key); index >= 0 {
-				sql = sql[:index]
-			} else {
-				break
-			}
-		}
-		return index
 	}
+
+	var index int
+	if position > 0 {
+		var offset int
+		for i := 0; i < position; i++ {
+			first := IndexOfKeywordFirst(sql, key)
+			if first < 0 {
+				return -1
+			}
+			sql = sql[first+kl:]
+			index = offset + first
+			offset = index + kl
+		}
+	} else {
+		for i := 0; i > position; i-- {
+			index = IndexOfKeywordLast(sql, key)
+			if index < 0 {
+				return -1
+			}
+			sql = sql[:index]
+		}
+	}
+	return index
 }
 
 // IndexOfKeywordFirst 获取sql中关键字首次出现的下标
 func IndexOfKeywordFirst(sql, key string) int {
-	//kl: key字符长度 loop:继续循环 index：命中下标
-	kl, loop, index := len(key), true, 0
-	for loop {
-		if newIndex := IndexOfString(sql, key, 1); newIndex >= 0 {
-			if HasAdjacent(sql, key, consts.Blank, newIndex) {
-				index, loop = index+newIndex, false
+	kl, stop, first := len(key), false, 0
+	for !stop {
+		if index := IndexOfString(sql, key, 1); index >= 0 {
+			if HasAdjacent(sql, key, consts.Blank, index) {
+				first, stop = first+index, true
 			} else {
-				index = newIndex + kl
-				sql = sql[index:]
+				first = index + kl
+				sql = sql[first:]
 			}
 		} else {
-			index, loop = -1, false // 没找到直接跳出
+			stop, first = true, -1 // 没找到直接跳出
 		}
 	}
-	return index
+	return first
 }
 
 // IndexOfKeywordLast 获取sql中关键字末次出现的下标
 func IndexOfKeywordLast(sql, key string) int {
-	loop, index := true, 0
-	for loop {
-		if newIndex := IndexOfString(sql, key, -1); newIndex >= 0 {
-			if HasAdjacent(sql, key, consts.Blank, newIndex) {
-				index, loop = index+newIndex, false
+	stop, last := false, 0
+	for !stop {
+		if index := IndexOfString(sql, key, -1); index >= 0 {
+			if HasAdjacent(sql, key, consts.Blank, index) {
+				last, stop = last+index, true
 			} else {
-				sql = sql[:newIndex]
+				sql = sql[:index]
 			}
 		} else {
-			index, loop = -1, false // 没找到直接跳出
+			stop, last = true, -1 // 没找到直接跳出
 		}
 	}
-	return index
+	return last
 }
 
 // HasAdjacent 判断目标kew在文本中当前位置是否有相邻字符
@@ -311,10 +315,10 @@ func BetweenOfString(str, start, end string) (from, to int) {
 	return
 }
 
-// indicesOfString 获取所有下标, x：命中数量
+// indicesOfString 获取所有下标, size：命中数量
 func indicesOfString(sql, str string, size ...int) []int {
 	var s = 0
-	if size[0] > 0 {
+	if len(size) > 0 && size[0] > 0 {
 		s = size[0]
 	}
 	var indices []int
@@ -366,8 +370,8 @@ func IndexOfString(sql, str string, position ...int) int {
 func TrimBrackets(sql string) string {
 	var loop = true
 	for loop {
-		var max = len(sql) - 1
-		if from, to := BetweenOfString(sql, consts.LeftBracket, consts.RightBracket); from == 0 && to == max {
+		l := len(sql) - 1
+		if from, to := BetweenOfString(sql, consts.LeftBracket, consts.RightBracket); from == 0 && to == l {
 			sql = sql[from+1 : to]
 		} else {
 			loop = false
@@ -383,4 +387,18 @@ func CutString(sql, str string, position ...int) (string, string) {
 		return sql[:i], sql[i+len(str):]
 	}
 	return sql, ""
+}
+
+// IfNextLine 判断是否需要换行
+func IfNextLine(values []string, size, max int) bool {
+	if len(values) > size {
+		return true
+	}
+	var l int
+	for _, value := range values {
+		if l += len(value); l > max {
+			return true
+		}
+	}
+	return false
 }

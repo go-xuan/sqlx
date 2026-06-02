@@ -4,66 +4,90 @@ import (
 	"strings"
 
 	"github.com/go-xuan/sqlx/consts"
+	"github.com/go-xuan/sqlx/model"
 	"github.com/go-xuan/sqlx/utils"
 )
 
 // ParseDeleteSQL 解析删除SQL
-func ParseDeleteSQL(sql string, indent ...int) *Delete {
-	// sql初始化
+func ParseDeleteSQL(sql string, indent ...int) (*Delete, error) {
 	var parser = &Delete{
-		Base: NewBase(sql, indent...),
+		SQL: NewSQL(sql, indent...),
 	}
 
-	// sql解析
-	parser.parsePrepare() // 解析准备
-	parser.parseTable()   // 解析主表
-	parser.parseWhere()   // 解析查询条件
-	parser.parseFinish()  // 解析完成
+	parser.parsePrepare()
+	parser.parseTable()
+	if err := parser.parseWhere(); err != nil {
+		return nil, err
+	}
+	parser.parseFinish()
 
-	return parser
+	return parser, nil
 }
 
 type Delete struct {
-	Base
-	Table *Table       // 删除表
-	Where []*Condition // 查询条件
+	SQL
+	Table *model.Table
+	Where []*model.Filter
 }
 
 func (x *Delete) Beautify() string {
-	return ""
+	var builder = strings.Builder{}
+	builder.WriteString(x.beautifyDelete())
+	builder.WriteString(x.beautifyCondition(x.Where))
+	sql := builder.String()
+	if x.replacer != nil {
+		return x.replacer.Replace(sql)
+	}
+	return sql
 }
 
-func (x *Delete) parseTable() *Delete {
-	sql := x.tempSql
-	// 去除update关键字
+// ToModel 转换为 model.Delete
+func (x *Delete) ToModel() *model.Delete {
+	return &model.Delete{
+		Table: x.Table,
+		Where: x.Where,
+	}
+}
+
+func (x *Delete) beautifyDelete() string {
+	var sql = strings.Builder{}
+	sql.WriteString(consts.DELETE)
+	sql.WriteString(consts.Blank)
+	sql.WriteString(consts.FROM)
+	sql.WriteString(consts.Blank)
+	sql.WriteString(tableSQL(x.Table))
+	return sql.String()
+}
+
+func (x *Delete) parseTable() {
+	sql := x.temp
 	if strings.HasPrefix(sql, consts.DELETE) {
-		sql = sql[7:]
+		sql = sql[len(consts.DELETE)+1:]
 	}
-	// 去除from关键字
 	if strings.HasPrefix(sql, consts.FROM) {
-		sql = sql[5:]
+		sql = sql[len(consts.FROM)+1:]
 	}
-	// 根据where关键字进行拆分
-	if index := utils.IndexOfKeywordFirst(sql, consts.WHERE); index >= 0 {
-		x.tempSql = sql[index:]
-		sql = sql[:index]
+	if first := utils.IndexOfKeywordFirst(sql, consts.WHERE); first >= 0 {
+		x.temp = sql[first:]
+		sql = sql[:first]
 	}
 	var name, alias string
 	if index := utils.IndexOfString(sql, consts.Blank, 1); index >= 0 {
 		name = sql[:index]
 		alias = utils.ExtractAlias(sql[index+1:])
 	}
-	x.Table = &Table{
+	x.Table = &model.Table{
 		Name:  name,
 		Alias: alias,
 	}
-	return x
 }
 
 // 提取查询条件
-func (x *Delete) parseWhere() *Delete {
-	if sql := x.tempSql; sql != "" {
-		x.Where, x.tempSql = ExtractWhere(sql)
+func (x *Delete) parseWhere() error {
+	if sql := x.temp; sql != "" {
+		var err error
+		x.Where, x.temp, err = ExtractWhere(sql)
+		return err
 	}
-	return x
+	return nil
 }

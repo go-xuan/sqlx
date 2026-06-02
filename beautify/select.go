@@ -4,49 +4,53 @@ import (
 	"strings"
 
 	"github.com/go-xuan/sqlx/consts"
+	"github.com/go-xuan/sqlx/model"
 	"github.com/go-xuan/sqlx/utils"
 )
 
 // ParseSelectSQL 解析查询SQL
-func ParseSelectSQL(sql string, indent ...int) *Select {
-	// sql初始化
+func ParseSelectSQL(sql string, indent ...int) (*Select, error) {
 	var parser = &Select{
-		Base: NewBase(sql, indent...),
+		SQL: NewSQL(sql, indent...),
 	}
 
-	// sql解析
-	parser.parsePrepare() // 解析准备
-	parser.parseLimit()   // 解析limit
-	parser.parseOrderBy() // 解析order by
-	parser.parseFields()  // 解析字段
-	parser.parseTable()   // 解析主表
-	parser.parseJoins()   // 解析关联子表
-	parser.parseWhere()   // 解析where
-	parser.parseGroupBy() // 解析group By
-	parser.parseHaving()  // 解析having
-	parser.parseFinish()  // 解析完成
+	parser.parsePrepare()
+	parser.parseLimit()
+	parser.parseOrderBy()
+	parser.parseFields()
+	if err := parser.parseTable(); err != nil {
+		return nil, err
+	}
+	if err := parser.parseJoins(); err != nil {
+		return nil, err
+	}
+	if err := parser.parseWhere(); err != nil {
+		return nil, err
+	}
+	parser.parseGroupBy()
+	if err := parser.parseHaving(); err != nil {
+		return nil, err
+	}
+	parser.parseFinish()
 
-	return parser
+	return parser, nil
 }
 
 type Select struct {
-	Base
-	Table    *Table       // 查询主表
-	Fields   []*Field     // 查询字段
-	Joins    []*Join      // 关联子表
-	Where    []*Condition // 查询条件
-	GroupBy  []string     // 分组条件
-	Having   []*Condition // 分组筛选条件
-	OrderBy  []string     // 排序条件
-	Limit    string       // 限数条件
-	Distinct bool         // 是否distinct
+	SQL
+	Table    *model.Table
+	Fields   []*model.Field
+	Joins    []*model.Join
+	Where    []*model.Filter
+	GroupBy  []string
+	Having   []*model.Filter
+	OrderBy  []string
+	Limit    string
+	Distinct bool
 }
 
 // Beautify SQL美化输出
 func (x *Select) Beautify() string {
-	if x.simple {
-		return x.originSql
-	}
 	var builder = strings.Builder{}
 	builder.WriteString(x.beautifySelect())
 	builder.WriteString(x.beautifyFrom())
@@ -55,58 +59,77 @@ func (x *Select) Beautify() string {
 	builder.WriteString(x.beautifyHaving())
 	builder.WriteString(x.beautifyOrderBy())
 	builder.WriteString(x.beautifyLimit())
-	if sql, replacer := builder.String(), x.replacer; replacer != nil {
-		return replacer.Replace(sql)
-	} else {
-		return sql
+	sql := builder.String()
+	if x.replacer != nil {
+		return x.replacer.Replace(sql)
+	}
+	return sql
+}
+
+// ToModel 转换为 model.Select
+func (x *Select) ToModel() *model.Select {
+	return &model.Select{
+		Table:    x.Table,
+		Fields:   x.Fields,
+		Joins:    x.Joins,
+		Where:    x.Where,
+		GroupBy:  x.GroupBy,
+		Having:   x.Having,
+		OrderBy:  x.OrderBy,
+		Limit:    x.Limit,
+		Distinct: x.Distinct,
+		SQL:      x.Beautify(),
 	}
 }
 
 // 提取查询字段
-func (x *Select) parseFields() *Select {
-	sql := x.tempSql
+func (x *Select) parseFields() {
+	sql := x.temp
 	if form, to := utils.BetweenOfString(sql, consts.SELECT+consts.Blank, consts.Blank+consts.FROM+consts.Blank); form >= 0 {
-		fieldsSql := sql[form+7 : to]
-		if to-form > 16 && fieldsSql[:8] == consts.DISTINCT {
+		fieldsSql := sql[form+len(consts.SELECT)+1 : to]
+		if to-form > 16 && fieldsSql[:len(consts.DISTINCT)] == consts.DISTINCT {
 			x.Distinct = true
-			fieldsSql = fieldsSql[9:]
+			fieldsSql = fieldsSql[len(consts.DISTINCT)+1:]
 		}
-		// 判断是否有字段包含括号（子查询或者函数等内部可能会包含","逗号，从而影响字段拆分）
 		list, last := utils.SplitExcludeInBracket(fieldsSql, consts.Comma)
 		list = append(list, last)
-		var fields []*Field
+		var fields []*model.Field
 		for _, fieldSql := range list {
 			var name, alias string
 			fieldSql = strings.TrimSpace(fieldSql)
-			if i := utils.IndexOfKeywordFirst(fieldSql, consts.AS); i >= 0 {
-				name, alias = fieldSql[:i], fieldSql[i:]
+			if first := utils.IndexOfKeywordFirst(fieldSql, consts.AS); first >= 0 {
+				name, alias = fieldSql[:first], fieldSql[first:]
 			} else if fieldSql[len(fieldSql)-1:] == consts.RightBracket {
 				name = fieldSql
-			} else if i = strings.LastIndex(fieldSql, consts.Blank); i >= 0 {
-				name, alias = fieldSql[:i], fieldSql[i+1:]
+			} else if first = strings.LastIndex(fieldSql, consts.Blank); first >= 0 {
+				name, alias = fieldSql[:first], fieldSql[first+1:]
 			} else {
 				name = fieldSql
 			}
-			if utils.IndexOfString(name, consts.ReplacePrefix) >= 0 {
+			if x.replacer != nil && utils.IndexOfString(name, consts.ReplacePrefix) >= 0 {
 				name = x.replacer.Replace(name)
 			}
-			fields = append(fields, &Field{Name: name, Alias: alias})
+			fields = append(fields, &model.Field{Name: name, Alias: alias})
 		}
 		x.Fields = fields
-		x.tempSql = sql[to:]
+		x.temp = sql[to:]
 	}
-	return x
 }
 
 // 提取查询主表
-func (x *Select) parseTable() *Select {
-	x.Table, x.tempSql = ExtractTable(x.tempSql, x.indent)
-	return x
+func (x *Select) parseTable() error {
+	table, remaining, err := ExtractTable(x.temp, x.indent)
+	if err != nil {
+		return err
+	}
+	x.Table = table
+	x.temp = remaining
+	return nil
 }
 
 // 提取关联子表
-func (x *Select) parseJoins() *Select {
-	sql := x.tempSql
+func (x *Select) parseJoins() error {
+	sql := x.temp
 
 	var joinSqlList []string
 	joinSqlList, sql = utils.SplitExcludeInBracket(sql, consts.JOIN)
@@ -122,12 +145,12 @@ func (x *Select) parseJoins() *Select {
 	joinSqlList = append(joinSqlList, lastJoin)
 	if len(joinSqlList) > 0 {
 		var joinType string
-		var joins []*Join
+		var joins []*model.Join
 		for i, joinSql := range joinSqlList {
 			if i == 0 {
 				joinType = strings.TrimSpace(joinSql)
 			} else {
-				var join = &Join{}
+				var join = &model.Join{}
 				var space = x.indent - 1
 				if joinType == consts.Empty {
 					space = space - 5
@@ -139,37 +162,44 @@ func (x *Select) parseJoins() *Select {
 					joinSql = joinSql[:index-1]
 				}
 
-				if index := utils.IndexOfKeywordLast(joinSql, consts.ON); index >= 0 {
-					join.On, joinSql = joinSql[index+3:], joinSql[:index-1]
+				if last := utils.IndexOfKeywordLast(joinSql, consts.ON); last >= 0 {
+					join.On = strings.TrimSpace(joinSql[last+len(consts.ON)+1:])
+					joinSql = joinSql[:last-1]
 				}
 
-				join.Table, _ = ExtractTable(joinSql, space+6)
+				table, _, err := ExtractTable(joinSql, space+6)
+				if err != nil {
+					return err
+				}
+				join.Table = table
 				joins = append(joins, join)
 			}
 		}
 		x.Joins = joins
-		x.tempSql = sql
+		x.temp = sql
 	}
-	return x
+	return nil
 }
 
 // 提取查询条件
-func (x *Select) parseWhere() *Select {
-	if sql := x.tempSql; sql != "" {
-		x.Where, x.tempSql = ExtractWhere(sql)
+func (x *Select) parseWhere() error {
+	if sql := x.temp; sql != "" {
+		var err error
+		x.Where, x.temp, err = ExtractWhere(sql)
+		return err
 	}
-	return x
+	return nil
 }
 
 // 提取group by
-func (x *Select) parseGroupBy() *Select {
-	sql := x.tempSql
-	if index := utils.IndexOfKeywordFirst(sql, consts.GROUPBY); index >= 0 {
+func (x *Select) parseGroupBy() {
+	sql := x.temp
+	if first := utils.IndexOfKeywordFirst(sql, consts.GROUPBY); first >= 0 {
 		var groupBySql string
 		if _, i := utils.ContainsKeywords(sql, consts.HAVING, consts.ORDERBY, consts.LIMIT); i >= 0 {
-			groupBySql, sql = sql[index+9:i], sql[i:]
+			groupBySql, sql = sql[first+len(consts.GROUPBY)+1:i], sql[i:]
 		} else {
-			groupBySql, sql = sql, consts.Empty
+			groupBySql, sql = sql[first+len(consts.GROUPBY)+1:], consts.Empty
 		}
 		groupBys := strings.Split(groupBySql, consts.Comma)
 		for i := range groupBys {
@@ -177,54 +207,54 @@ func (x *Select) parseGroupBy() *Select {
 		}
 		x.GroupBy = groupBys
 	}
-	x.tempSql = sql
-	return x
+	x.temp = sql
 }
 
 // 提取having
-func (x *Select) parseHaving() *Select {
-	sql := x.tempSql
-	if index := utils.IndexOfKeywordFirst(sql, consts.HAVING); index >= 0 {
-		sql = sql[index+6:]
+func (x *Select) parseHaving() error {
+	sql := x.temp
+	if first := utils.IndexOfKeywordFirst(sql, consts.HAVING); first >= 0 {
+		sql = sql[first+len(consts.HAVING):]
 		var havingSql string
 		if _, i := utils.ContainsKeywords(sql, consts.ORDERBY, consts.LIMIT); i >= 0 {
 			havingSql, sql = sql[:i], sql[i:]
 		} else {
 			havingSql, sql = sql, consts.Empty
 		}
-		x.Having = NewConditions(havingSql)
+		var err error
+		x.Having, err = NewConditions(havingSql)
+		if err != nil {
+			return err
+		}
 	}
-	x.tempSql = sql
-	return x
+	x.temp = sql
+	return nil
 }
 
 // 提取order by
-func (x *Select) parseOrderBy() *Select {
-	sql := x.tempSql
-	if index := utils.IndexOfKeywordLast(sql, consts.ORDERBY); index > 0 {
+func (x *Select) parseOrderBy() {
+	sql := x.temp
+	if last := utils.IndexOfKeywordLast(sql, consts.ORDERBY); last > 0 {
 		var orderBySql string
-		if i := utils.IndexOfString(sql, consts.RightBracket, -1); i < index {
-			// 排除子查询中的order by，只取主查询的order by
-			orderBySql, sql = sql[index+9:], sql[:index-1]
+		if index := utils.IndexOfString(sql, consts.RightBracket, -1); index < last {
+			orderBySql, sql = sql[last+len(consts.ORDERBY)+1:], sql[:last-1]
 		}
 		if orderBySql != consts.Empty {
 			x.OrderBy = strings.Split(orderBySql, consts.Comma)
 		}
 	}
-	x.tempSql = sql
-	return x
+	x.temp = sql
 }
 
 // 提取limit
-func (x *Select) parseLimit() *Select {
-	sql := x.tempSql
-	i := utils.IndexOfKeywordLast(sql, consts.LIMIT)
-	j := utils.IndexOfString(sql, consts.RightBracket, -1)
-	if i > 0 && i > j {
-		x.Limit, sql = sql[i+6:], sql[:i]
+func (x *Select) parseLimit() {
+	sql := x.temp
+	last := utils.IndexOfKeywordLast(sql, consts.LIMIT)
+	index := utils.IndexOfString(sql, consts.RightBracket, -1)
+	if last > 0 && last > index {
+		x.Limit, sql = sql[last+len(consts.LIMIT)+1:], sql[:last]
 	}
-	x.tempSql = sql
-	return x
+	x.temp = sql
 }
 
 // 构建查询字段sql
@@ -273,7 +303,7 @@ func (x *Select) beautifyFrom() string {
 	sql.WriteString(consts.NextLine)
 	sql.WriteString(x.align(consts.FROM))
 	sql.WriteString(consts.Blank)
-	sql.WriteString(x.Table.beautify(true))
+	sql.WriteString(tableSQL(x.Table, true))
 	for _, join := range x.Joins {
 		sql.WriteString(consts.NextLine)
 		if join.Type != consts.Empty {
@@ -284,7 +314,7 @@ func (x *Select) beautifyFrom() string {
 			sql.WriteString(x.align(consts.JOIN))
 		}
 		sql.WriteString(consts.Blank)
-		sql.WriteString(join.Table.beautify(true))
+		sql.WriteString(tableSQL(join.Table, true))
 		sql.WriteString(consts.NextLine)
 		sql.WriteString(x.align(consts.ON))
 		sql.WriteString(consts.Blank)
@@ -294,16 +324,16 @@ func (x *Select) beautifyFrom() string {
 }
 
 func (x *Select) beautifyWhere() string {
-	if conditions := x.Where; len(conditions) > 0 {
+	if filters := x.Where; len(filters) > 0 {
 		sql := strings.Builder{}
 		sql.WriteString(consts.NextLine)
 		sql.WriteString(x.align(consts.WHERE))
 		sql.WriteString(consts.Blank)
-		for i, condition := range conditions {
+		for i, f := range filters {
 			if i > 0 {
 				sql.WriteString(consts.NextLine)
 			}
-			sql.WriteString(condition.beautify(x.indent))
+			sql.WriteString(filterSQL(f, x.indent))
 		}
 		return sql.String()
 	}
@@ -311,16 +341,16 @@ func (x *Select) beautifyWhere() string {
 }
 
 func (x *Select) beautifyHaving() string {
-	if conditions := x.Having; len(conditions) > 0 {
+	if filters := x.Having; len(filters) > 0 {
 		sql := strings.Builder{}
 		sql.WriteString(consts.NextLine)
 		sql.WriteString(x.align(consts.HAVING))
 		sql.WriteString(consts.Blank)
-		for i, condition := range conditions {
+		for i, f := range filters {
 			if i > 0 {
 				sql.WriteString(consts.NextLine)
 			}
-			sql.WriteString(condition.beautify(x.indent))
+			sql.WriteString(filterSQL(f, x.indent))
 		}
 		return sql.String()
 	}
@@ -333,19 +363,13 @@ func (x *Select) beautifyOrderBy() string {
 		sql.WriteString(consts.NextLine)
 		sql.WriteString(x.align(consts.ORDERBY))
 		sql.WriteString(consts.Blank)
-		var max, nextLine = 0, false
-		for _, value := range values {
-			if max = max + len(value); max > 100 {
-				nextLine = true
-				break
-			}
-		}
+		ifNextLine := utils.IfNextLine(values, 0, 100)
 		for i, value := range values {
 			value = strings.TrimSpace(value)
 			if i > 0 {
 				sql.WriteString(consts.Comma)
 				sql.WriteString(consts.Blank)
-				if nextLine {
+				if ifNextLine {
 					sql.WriteString(consts.NextLine)
 					sql.WriteString(Align(x.indent + 4))
 				}
@@ -363,18 +387,12 @@ func (x *Select) beautifyGroupBy() string {
 		sql.WriteString(consts.NextLine)
 		sql.WriteString(x.align(consts.GROUPBY))
 		sql.WriteString(consts.Blank)
-		var max, nextLine = 0, false
-		for _, value := range values {
-			if max = max + len(value); max > 100 {
-				nextLine = true
-				break
-			}
-		}
+		ifNextLine := utils.IfNextLine(values, 0, 100)
 		for i, value := range values {
 			if i > 0 {
 				sql.WriteString(consts.Comma)
 				sql.WriteString(consts.Blank)
-				if nextLine {
+				if ifNextLine {
 					sql.WriteString(consts.NextLine)
 					sql.WriteString(Align(x.indent + 4))
 				}
