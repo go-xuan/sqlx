@@ -1,35 +1,37 @@
 package beautify
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/go-xuan/sqlx/consts"
+	"github.com/go-xuan/sqlx/model"
 	"github.com/go-xuan/sqlx/utils"
 )
 
 // ParseInsertSQL 解析插入SQL
-func ParseInsertSQL(sql string, indent ...int) *Insert {
-	// sql初始化
+func ParseInsertSQL(sql string, indent ...int) (*Insert, error) {
 	var parser = &Insert{
 		SQL: NewSQL(sql, indent...),
 	}
 
-	// sql解析
-	parser.parsePrepare()  // 解析准备
-	parser.parseTable()    // 解析主表
-	parser.extractFields() // 解析字段
-	parser.extractValues() // 解析插入值
-	parser.parseFinish()   // 解析完成
+	parser.parsePrepare()
+	parser.parseTable()
+	parser.extractFields()
+	if err := parser.extractValues(); err != nil {
+		return nil, err
+	}
+	parser.parseFinish()
 
-	return parser
+	return parser, nil
 }
 
 type Insert struct {
 	SQL
-	Table     *Table     // 插入表
-	Fields    []*Field   // 插入字段
-	ValueData [][]string // 插入值
-	Query     *Select    // 子查询
+	Table     *model.Table
+	Fields    []*model.Field
+	ValueData [][]string
+	Query     *Select
 }
 
 func (x *Insert) Beautify() string {
@@ -37,23 +39,34 @@ func (x *Insert) Beautify() string {
 	builder.WriteString(x.beautifyInsert())
 	builder.WriteString(x.beautifyFields())
 	builder.WriteString(x.beautifyValues())
-	if sql, replacer := builder.String(), x.replacer; replacer != nil {
-		return replacer.Replace(sql)
-	} else {
-		return sql
+	sql := builder.String()
+	if x.replacer != nil {
+		return x.replacer.Replace(sql)
 	}
+	return sql
 }
 
-// 构建查询字段sql
+// ToModel 转换为 model.Insert
+func (x *Insert) ToModel() *model.Insert {
+	m := &model.Insert{
+		Table:     x.Table,
+		Fields:    x.Fields,
+		ValueData: x.ValueData,
+	}
+	if x.Query != nil {
+		m.Query = x.Query.ToModel()
+	}
+	return m
+}
+
 func (x *Insert) beautifyInsert() string {
 	var sql = strings.Builder{}
 	sql.WriteString("insert into ")
-	sql.WriteString(x.Table.beautify())
+	sql.WriteString(tableSQL(x.Table))
 	sql.WriteString(consts.NextLine)
 	return sql.String()
 }
 
-// 构建查询字段sql
 func (x *Insert) beautifyFields() string {
 	var sql = strings.Builder{}
 	var maxLen int
@@ -83,7 +96,6 @@ func (x *Insert) beautifyFields() string {
 	return sql.String()
 }
 
-// 构建查询字段sql
 func (x *Insert) beautifyValues() string {
 	if x.Query != nil {
 		return x.Query.Beautify()
@@ -125,85 +137,80 @@ func (x *Insert) beautifyValues() string {
 	return ""
 }
 
-func (x *Insert) parseTable() *Insert {
+func (x *Insert) parseTable() {
 	sql := x.temp
-	// 去除insert关键字
 	if first := utils.IndexOfKeywordFirst(sql, consts.INSERT); first == 0 {
-		sql = sql[7:]
+		sql = sql[len(consts.INSERT)+1:]
 	}
-	// 去除into关键字
 	if first := utils.IndexOfKeywordFirst(sql, consts.INTO); first == 0 {
-		sql = sql[5:]
+		sql = sql[len(consts.INTO)+1:]
 	}
-	// 根据set关键字进行拆分
 	if index := utils.IndexOfString(sql, consts.LeftBracket); index >= 0 {
-		x.Table = &Table{
+		x.Table = &model.Table{
 			Name: strings.TrimSpace(sql[:index-1]),
 		}
 		x.temp = sql[index:]
 	}
-	return x
 }
 
-func (x *Insert) extractFields() *Insert {
+func (x *Insert) extractFields() {
 	sql := x.temp
-	// 根据set关键字进行拆分
 	if from, to := utils.BetweenOfString(sql, consts.LeftBracket, consts.RightBracket); from >= 0 && from < to {
-		x.temp = sql[to+2:]
+		x.temp = strings.TrimLeft(sql[to+1:], consts.Blank)
 		sql = sql[from+1 : to]
 	}
 	if names := strings.Split(sql, consts.Comma); len(names) > 0 {
-		var fields []*Field
+		var fields []*model.Field
 		for _, name := range names {
 			name = strings.TrimSpace(name)
-			fields = append(fields, &Field{Name: name})
+			fields = append(fields, &model.Field{Name: name})
 		}
 		x.Fields = fields
 	}
-	return x
 }
 
-func (x *Insert) extractValues() *Insert {
+func (x *Insert) extractValues() error {
 	sql := strings.TrimLeft(x.temp, consts.Blank)
 	if first := utils.IndexOfKeywordFirst(sql, consts.SELECT); first == 0 {
-		if query := ParseSelectSQL(sql); query != nil && len(query.Fields) == len(x.Fields) {
-			x.Query = query
-		} else {
-			panic("select字段数量和insert字段数量不匹配")
+		query, err := ParseSelectSQL(sql)
+		if err != nil {
+			return fmt.Errorf("insert子查询解析失败: %w", err)
 		}
-		return x
+		if len(query.Fields) != len(x.Fields) {
+			return fmt.Errorf("select字段数量和insert字段数量不匹配")
+		}
+		x.Query = query
+		return nil
 	}
-	// 去除values关键字
 	if first := utils.IndexOfKeywordFirst(sql, consts.VALUES); first == 0 {
-		sql = sql[7:]
+		sql = sql[len(consts.VALUES)+1:]
 	}
 
 	if first := utils.IndexOfKeywordFirst(sql, consts.VALUE); first == 0 {
-		sql = sql[6:]
+		sql = sql[len(consts.VALUE)+1:]
 	}
 
-	// 根据逗号进行拆分所有插入值
 	valuesList, lastValues := utils.SplitExcludeInBracket(sql, consts.Comma)
 
-	// 去除最后一组values的分号
 	if index := utils.IndexOfString(lastValues, consts.Semicolon, -1); index >= 0 {
 		lastValues = lastValues[:index]
 	}
 
 	valuesList = append(valuesList, lastValues)
 	for _, valuesSql := range valuesList {
-		if values := utils.SplitValuesSql(valuesSql); len(values) == len(x.Fields) {
+		values := utils.SplitValuesSql(valuesSql)
+		if len(values) == len(x.Fields) {
 			x.ValueData = append(x.ValueData, values)
 		} else {
 			var names []string
 			for i, field := range x.Fields {
 				if i < len(values) {
-					names = append(names, field.Name+" : "+x.replacer.Replace(values[i]))
+					names = append(names, field.Name+" : "+values[i])
 				}
 			}
-			panic("insert字段数量和insert值数量不匹配: \n" + strings.Join(names, "\n"))
+			return fmt.Errorf("insert字段数量和insert值数量不匹配: \n%s", strings.Join(names, "\n"))
 		}
 	}
 
-	return x
+	return nil
 }

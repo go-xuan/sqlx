@@ -8,12 +8,14 @@ import (
 	"github.com/go-xuan/sqlx/consts"
 )
 
+var whitespaceRe = regexp.MustCompile(`\s+`)
+
 // CollapseSql 折叠sql，去除换行、多余空格、首尾空格、末尾分号
 func CollapseSql(sql string) string {
 	sql = strings.ReplaceAll(sql, consts.NextLine, consts.Blank)        // 移除换行
-	sql = regexp.MustCompile(`\s+`).ReplaceAllString(sql, consts.Blank) // 去除多余空格
+	sql = whitespaceRe.ReplaceAllString(sql, consts.Blank) // 去除多余空格
 	sql = strings.TrimSpace(sql)                                        // 去除首尾空格
-	sql = strings.TrimPrefix(sql, consts.Semicolon)                     // 去除末尾分号
+	sql = strings.TrimSuffix(sql, consts.Semicolon)                     // 去除末尾分号
 	return sql
 }
 
@@ -49,7 +51,7 @@ func ParseValuesInSql(sql string) (string, *strings.Replacer) {
 func AllKeywordsToLower(sql string) string {
 	var oldnew []string
 	var KEYWORDS = []string{
-		consts.SELECT, consts.UPDATE, consts.DELETE, consts.INSERT, consts.INTO, consts.VALUES, consts.VALUES,
+		consts.SELECT, consts.UPDATE, consts.DELETE, consts.INSERT, consts.INTO, consts.VALUES,
 		consts.FROM, consts.WHERE, consts.SET, consts.JOIN, consts.GROUP, consts.ORDER, consts.HAVING, consts.LIMIT, consts.OFFSET,
 		consts.ASC, consts.DESC, consts.CASE, consts.WHEN, consts.THEN, consts.END, consts.INNER, consts.OUTER, consts.LEFT, consts.RIGHT,
 		consts.DISTINCT, consts.PARTITION, consts.OVER, consts.AS, consts.AND, consts.ON, consts.OR, consts.IN, consts.NOT, consts.LIKE, consts.BY,
@@ -128,14 +130,12 @@ func IndexExcludeBrackets(sql, key string, pure bool) int {
 	return -1
 }
 
-// ContainsKeywords 是否包含sql关键字
+// ContainsKeywords 是否包含sql关键字，返回最早出现的关键字及其下标
 func ContainsKeywords(sql string, keys ...string) (string, int) {
 	var hit, index = "", -1
 	for _, key := range keys {
 		if first := IndexOfKeywordFirst(sql, key); first >= 0 {
-			if first < index {
-				hit, index = key, first
-			} else if index == -1 {
+			if index == -1 || first < index {
 				hit, index = key, first
 			}
 		}
@@ -145,13 +145,13 @@ func ContainsKeywords(sql string, keys ...string) (string, int) {
 
 // FirstIndexOfKeys 获取多个关键字中任一关键字首次命中下标
 func FirstIndexOfKeys(sql string, keys ...string) (string, int) {
-	var hit, index = "", len(sql) - 1
+	var hit, index = "", len(sql)
 	for _, key := range keys {
 		if first := IndexOfKeywordFirst(sql, key); first >= 0 && first < index {
-			index = first
+			hit, index = key, first
 		}
 	}
-	if index == len(sql)-1 {
+	if index == len(sql) {
 		index = -1
 	}
 	return hit, index
@@ -161,7 +161,7 @@ func FirstIndexOfKeys(sql string, keys ...string) (string, int) {
 func LastIndexOfKeys(sql string, keys ...string) (string, int) {
 	var hit, index = "", -1
 	for _, key := range keys {
-		if last := IndexOfKeywordLast(sql, key); last >= 0 && last > index {
+		if last := IndexOfKeywordLast(sql, key); last > index {
 			hit, index = key, last
 		}
 	}
@@ -172,7 +172,7 @@ func LastIndexOfKeys(sql string, keys ...string) (string, int) {
 func IndicesOfKeyword(sql, key string, size ...int) []int {
 	if sl, kl := len(sql), len(key); sl >= kl {
 		var s, n = 0, 0
-		if size[0] > 0 {
+		if len(size) > 0 && size[0] > 0 {
 			s = size[0]
 		}
 		var indices []int
@@ -205,7 +205,7 @@ func IndexOfKeyword(sql, key string, position int) int {
 		var offset int
 		for i := 0; i < position; i++ {
 			first := IndexOfKeywordFirst(sql, key)
-			if first <= 0 {
+			if first < 0 {
 				return -1
 			}
 			sql = sql[first+kl:]
@@ -215,7 +215,7 @@ func IndexOfKeyword(sql, key string, position int) int {
 	} else {
 		for i := 0; i > position; i-- {
 			index = IndexOfKeywordLast(sql, key)
-			if index <= 0 {
+			if index < 0 {
 				return -1
 			}
 			sql = sql[:index]
@@ -248,7 +248,7 @@ func IndexOfKeywordLast(sql, key string) int {
 	for !stop {
 		if index := IndexOfString(sql, key, -1); index >= 0 {
 			if HasAdjacent(sql, key, consts.Blank, index) {
-				last, stop = last+index, false
+				last, stop = last+index, true
 			} else {
 				sql = sql[:index]
 			}
@@ -318,7 +318,7 @@ func BetweenOfString(str, start, end string) (from, to int) {
 // indicesOfString 获取所有下标, size：命中数量
 func indicesOfString(sql, str string, size ...int) []int {
 	var s = 0
-	if size[0] > 0 {
+	if len(size) > 0 && size[0] > 0 {
 		s = size[0]
 	}
 	var indices []int

@@ -1,18 +1,24 @@
 package beautify
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/go-xuan/sqlx/consts"
+	"github.com/go-xuan/sqlx/model"
 	"github.com/go-xuan/sqlx/utils"
 )
 
 // NewSQL 初始化SQL
 func NewSQL(sql string, indent ...int) SQL {
+	var n int
+	if len(indent) > 0 {
+		n = indent[0]
+	}
 	return SQL{
 		origin: sql,
 		temp:   sql,
-		indent: 6 + indent[0],
+		indent: 6 + n,
 	}
 }
 
@@ -27,12 +33,10 @@ type SQL struct {
 // 解析准备
 func (s *SQL) parsePrepare() {
 	sql := s.temp
-	// 解析sql中所有的参数值，避免参数值值影响后续sql解析
 	var replacer *strings.Replacer
 	if sql, replacer = utils.ParseValuesInSql(sql); replacer != nil {
 		s.replacer = replacer
 	}
-	// 将sql中所有关键字转为小写
 	s.temp = utils.AllKeywordsToLower(sql)
 }
 
@@ -60,201 +64,203 @@ func Align(indent int, key ...string) string {
 }
 
 // ExtractWhere 提取条件
-func ExtractWhere(sql string) ([]*Condition, string) {
+func ExtractWhere(sql string) ([]*model.Filter, string, error) {
 	if sql != "" {
 		if first := utils.IndexOfKeywordFirst(sql, consts.WHERE); first >= 0 {
-			// 去除where关键字
-			sql = sql[first+5:]
-			// 提取where部分sql
+			sql = sql[first+len(consts.WHERE):]
 			var whereSql string
 			if _, end := utils.ContainsKeywords(sql, consts.GROUPBY, consts.ORDERBY, consts.LIMIT); end >= 0 {
 				whereSql, sql = sql[:end], sql[end:]
 			} else {
 				whereSql, sql = sql, consts.Empty
 			}
-			// 提取Conditions条件
-			return NewConditions(whereSql), sql
+			filters, err := NewConditions(whereSql)
+			if err != nil {
+				return nil, sql, err
+			}
+			return filters, sql, nil
 		}
 	}
-	return nil, sql
+	return nil, sql, nil
 }
 
 // NewConditions 全部条件
-func NewConditions(sql string) []*Condition {
-	// 去除前后多余括号
+func NewConditions(sql string) ([]*model.Filter, error) {
 	sql = utils.TrimBrackets(sql)
-	var conditions []*Condition
-	var loop, logical = true, ""
+	var filters []*model.Filter
+	var loop, logical = true, model.LogicOp("")
 	for loop {
 		if index := utils.IndexExcludeBrackets(sql, consts.AND, true); index > 0 {
-			conditions = append(conditions, NewCondition(sql[:index], logical))
-			sql, logical = sql[index+4:], consts.AND
+			filter, err := NewCondition(sql[:index], logical)
+			if err != nil {
+				return nil, err
+			}
+			filters = append(filters, filter)
+			sql, logical = sql[index+len(consts.AND)+1:], model.AND
 		} else if index = utils.IndexExcludeBrackets(sql, consts.OR, true); index > 0 {
-			conditions = append(conditions, NewCondition(sql[:index], logical))
-			sql, logical = sql[index+3:], consts.OR
+			filter, err := NewCondition(sql[:index], logical)
+			if err != nil {
+				return nil, err
+			}
+			filters = append(filters, filter)
+			sql, logical = sql[index+len(consts.OR)+1:], model.OR
 		} else {
-			conditions = append(conditions, NewCondition(sql, logical))
+			filter, err := NewCondition(sql, logical)
+			if err != nil {
+				return nil, err
+			}
+			filters = append(filters, filter)
 			loop = false
 		}
 	}
-	return conditions
+	return filters, nil
 }
 
 // NewCondition 单个条件
-func NewCondition(sql string, logical string) *Condition {
-	// 去除前后空格
+func NewCondition(sql string, logical model.LogicOp) (*model.Filter, error) {
 	sql = strings.TrimSpace(sql)
-	var condition = &Condition{LogicalOperators: logical}
+	var filter = &model.Filter{LogicOp: logical}
 	if from, to := utils.BetweenOfString(sql, consts.LeftBracket, consts.RightBracket); from == 0 && to == len(sql)-1 {
-		condition.Conditions = NewConditions(sql[from+1 : to]) // ()括号在前后两端表示是联合子条件
+		children, err := NewConditions(sql[from+1 : to])
+		if err != nil {
+			return nil, err
+		}
+		filter.Children = children
 	} else if index := utils.IndexExcludeBrackets(sql, consts.NE, true); index > 0 {
-		condition.Name = sql[:index-1]
-		condition.ComparisonOperators = sql[index : index+2]
-		condition.Value = sql[index+3:]
+		filter.Field, filter.Op, filter.Value = extractOp(sql, index, len(consts.NE))
 	} else if index = utils.IndexExcludeBrackets(sql, consts.GE, true); index > 0 {
-		condition.Name = sql[:index-1]
-		condition.ComparisonOperators = sql[index : index+2]
-		condition.Value = sql[index+3:]
+		filter.Field, filter.Op, filter.Value = extractOp(sql, index, len(consts.GE))
 	} else if index = utils.IndexExcludeBrackets(sql, consts.LE, true); index > 0 {
-		condition.Name = sql[:index-1]
-		condition.ComparisonOperators = sql[index : index+2]
-		condition.Value = sql[index+3:]
+		filter.Field, filter.Op, filter.Value = extractOp(sql, index, len(consts.LE))
 	} else if index = utils.IndexExcludeBrackets(sql, consts.EQ, true); index > 0 {
-		condition.Name = sql[:index-1]
-		condition.ComparisonOperators = sql[index : index+1]
-		condition.Value = sql[index+2:]
+		filter.Field, filter.Op, filter.Value = extractOp(sql, index, len(consts.EQ))
 	} else if index = utils.IndexExcludeBrackets(sql, consts.LT, true); index > 0 {
-		condition.Name = sql[:index-1]
-		condition.ComparisonOperators = sql[index : index+1]
-		condition.Value = sql[index+2:]
+		filter.Field, filter.Op, filter.Value = extractOp(sql, index, len(consts.LT))
 	} else if index = utils.IndexExcludeBrackets(sql, consts.GT, true); index > 0 {
-		condition.Name = sql[:index-1]
-		condition.ComparisonOperators = sql[index : index+1]
-		condition.Value = sql[index+2:]
+		filter.Field, filter.Op, filter.Value = extractOp(sql, index, len(consts.GT))
 	} else if index = utils.IndexExcludeBrackets(sql, consts.LIKE, true); index > 0 {
-		condition.Name = sql[:index-1]
-		condition.ComparisonOperators = sql[index : index+4]
-		condition.Value = sql[index+5:]
+		filter.Field, filter.Op, filter.Value = extractOp(sql, index, len(consts.LIKE))
 	} else if index = utils.IndexExcludeBrackets(sql, consts.NOTIN, true); index > 0 {
-		condition.Name = sql[:index-1]
-		condition.ComparisonOperators = sql[index : index+6]
-		condition.parseIN(sql[index+7:])
+		filter.Field = &model.Field{Name: sql[:index-1]}
+		filter.Op = model.NIN
+		if err := parseIN(filter, sql[index+len(consts.NOTIN)+1:]); err != nil {
+			return nil, err
+		}
 	} else if index = utils.IndexExcludeBrackets(sql, consts.IN, true); index > 0 {
-		condition.Name = sql[:index-1]
-		condition.ComparisonOperators = sql[index : index+2]
-		condition.parseIN(sql[index+3:])
+		filter.Field = &model.Field{Name: sql[:index-1]}
+		filter.Op = model.IN
+		if err := parseIN(filter, sql[index+len(consts.IN)+1:]); err != nil {
+			return nil, err
+		}
 	} else if index = utils.IndexExcludeBrackets(sql, consts.ISNOT, true); index > 0 {
-		condition.Name = sql[:index-1]
-		condition.ComparisonOperators = sql[index : index+6]
-		condition.Value = sql[index+7:]
+		filter.Field, filter.Op, filter.Value = extractOp(sql, index, len(consts.ISNOT))
 	} else if index = utils.IndexExcludeBrackets(sql, consts.IS, true); index > 0 {
-		condition.Name = sql[:index-1]
-		condition.ComparisonOperators = sql[index : index+2]
-		condition.Value = sql[index+3:]
+		filter.Field, filter.Op, filter.Value = extractOp(sql, index, len(consts.IS))
 	} else {
-		condition.Name = sql
+		filter.Field = &model.Field{Name: sql}
 	}
-	return condition
+	return filter, nil
 }
 
-// Join 关联表解析
-type Join struct {
-	Table *Table // join表对象
-	Type  string // join类型left/right/inner
-	On    string // 关联条件
+func extractOp(sql string, index, opLen int) (field *model.Field, op model.OP, value string) {
+	return &model.Field{Name: sql[:index-1]}, model.OP(sql[index : index+opLen]), sql[index+opLen+1:]
 }
 
-// Condition 查询条件解析
-type Condition struct {
-	Name                string       // 字段
-	Value               string       // 值
-	Values              []string     // in值
-	LogicalOperators    string       // 逻辑运算符：and、or
-	ComparisonOperators string       // 比较运算符：=、!=、like、in、not in、is、is not
-	Select              *Select      // 子查询
-	Conditions          []*Condition // 子条件
-}
-
-func (c *Condition) parseIN(sql string) {
+func parseIN(filter *model.Filter, sql string) error {
 	sql = strings.Trim(sql, "() ;")
 	if first := utils.IndexOfKeywordFirst(sql, consts.SELECT); first >= 0 {
-		indent := len(c.Name) + 12
-		c.Select = ParseSelectSQL(sql, indent)
+		indent := len(filter.Field.Name) + 12
+		subSelect, err := ParseSelectSQL(sql, indent)
+		if err != nil {
+			return err
+		}
+		filter.SubSQL = subSelect.Beautify()
+		filter.Select = subSelect.ToModel()
 	} else {
-		c.Values = strings.Split(sql, consts.Comma)
+		vals := strings.Split(sql, consts.Comma)
+		filter.Values = make([]any, len(vals))
+		for i, v := range vals {
+			filter.Values[i] = strings.TrimSpace(v)
+		}
 	}
+	return nil
 }
 
-func (c *Condition) getIN(indent int) string {
-	sql := strings.Builder{}
-	sql.WriteString(consts.LeftBracket)
-	if len(c.Values) > 0 {
-		nextLine := len(c.Values) > 3
-		for i, value := range c.Values {
+func getIN(filter *model.Filter, indent int) string {
+	var b strings.Builder
+	b.WriteString(consts.LeftBracket)
+	if filter.SubSQL != "" {
+		b.WriteString(filter.SubSQL)
+	} else if len(filter.Values) > 0 {
+		nextLine := len(filter.Values) > 3
+		for i, v := range filter.Values {
 			if i > 0 {
-				sql.WriteString(consts.Comma)
-				sql.WriteString(consts.Blank)
+				b.WriteString(consts.Comma)
+				b.WriteString(consts.Blank)
 				if nextLine {
-					sql.WriteString(consts.NextLine)
-					sql.WriteString(Align(indent))
+					b.WriteString(consts.NextLine)
+					b.WriteString(Align(indent))
 				}
 			}
-			sql.WriteString(value)
+			fmt.Fprint(&b, v)
 		}
-	} else {
-		sql.WriteString(c.Select.Beautify())
 	}
-	sql.WriteString(consts.RightBracket)
-	return sql.String()
+	b.WriteString(consts.RightBracket)
+	return b.String()
 }
 
-func (c *Condition) beautify(indent int) string {
-	var sql = strings.Builder{}
-	if c.LogicalOperators != "" {
-		sql.WriteString(Align(indent, c.LogicalOperators))
-		sql.WriteString(consts.Blank)
+func filterSQL(filter *model.Filter, indent int) string {
+	var b strings.Builder
+	if filter.LogicOp != "" {
+		b.WriteString(Align(indent, string(filter.LogicOp)))
+		b.WriteString(consts.Blank)
 	}
-	if len(c.Conditions) > 0 { // 联合子条件
-		sql.WriteString("(")
-		for i, condition := range c.Conditions {
+	if len(filter.Children) > 0 {
+		b.WriteString("(")
+		for i, child := range filter.Children {
 			if i > 0 {
-				sql.WriteString(consts.Blank)
+				b.WriteString(consts.Blank)
 			}
-			sql.WriteString(condition.beautify(0))
+			b.WriteString(filterSQL(child, 0))
 		}
-		sql.WriteString(")")
-	} else { // 单条件
-		sql.WriteString(c.Name)
-		sql.WriteString(consts.Blank)
-		sql.WriteString(c.ComparisonOperators)
-		sql.WriteString(consts.Blank)
-		if c.ComparisonOperators == consts.IN || c.ComparisonOperators == consts.NOTIN {
-			sql.WriteString(c.getIN(indent + len(c.Name) + 6))
+		b.WriteString(")")
+	} else {
+		b.WriteString(filter.Field.Name)
+		b.WriteString(consts.Blank)
+		b.WriteString(string(filter.Op))
+		b.WriteString(consts.Blank)
+		if filter.Op == model.IN || filter.Op == model.NIN {
+			b.WriteString(getIN(filter, indent+len(filter.Field.Name)+6))
 		} else {
-			sql.WriteString(c.Value)
+			fmt.Fprint(&b, filter.Value)
 		}
 	}
-	return sql.String()
+	return b.String()
 }
 
 // ExtractTable 提取主表
-func ExtractTable(sql string, indent int) (*Table, string) {
+func ExtractTable(sql string, indent int) (*model.Table, string, error) {
 	if index := utils.IndexExcludeBrackets(sql, consts.FROM, true); index >= 0 {
-		sql = sql[index+4:] // 截取掉from，但是保留表名前面的空格
+		sql = sql[index+len(consts.FROM):]
 	} else if sql[:1] != consts.Blank {
-		sql = consts.Blank + sql // 没空格则补上空格
+		sql = consts.Blank + sql
 	}
-	var table = &Table{}
-	if sql[1:2] == consts.LeftBracket { // 如果from后面跟括号，表示是子查询
+	var table = &model.Table{}
+	if sql[1:2] == consts.LeftBracket {
 		if from, to := utils.BetweenOfString(sql, consts.LeftBracket, consts.RightBracket); from >= 0 && from < to {
-			table.Select = ParseSelectSQL(sql[from+1:to], indent+2)
+			subSelect, err := ParseSelectSQL(sql[from+1:to], indent+2)
+			if err != nil {
+				return nil, "", err
+			}
+			table.SubSQL = subSelect.Beautify()
+			table.Select = subSelect.ToModel()
 			sql = sql[to:]
 		} else {
-			panic("解析sql异常")
+			return nil, "", fmt.Errorf("解析sql异常：无法匹配括号")
 		}
-	} else { // from后面直接跟表名
-		before := utils.IndexOfString(sql, consts.Blank, 1)                 // 表名前空格下标，前面已经做了处理，所以此空格必定存在
-		if after := utils.IndexOfString(sql, consts.Blank, 2); after >= 0 { // 表名后空格下标
+	} else {
+		before := utils.IndexOfString(sql, consts.Blank, 1)
+		if after := utils.IndexOfString(sql, consts.Blank, 2); after >= 0 {
 			table.Name, sql = sql[before+1:after], sql[after+1:]
 		} else {
 			table.Name, sql = sql[before+1:], ""
@@ -264,47 +270,68 @@ func ExtractTable(sql string, indent int) (*Table, string) {
 		var alias string
 		if _, index := utils.ContainsKeywords(sql, consts.LEFT, consts.RIGHT, consts.INNER, consts.OUTER, consts.JOIN,
 			consts.WHERE, consts.GROUPBY, consts.ORDERBY, consts.LIMIT); index >= 0 {
-			// 判断是否是复杂查询
 			alias, sql = sql[:index], sql[index:]
-		} else { // 简单查询
+		} else {
 			alias, sql = sql, consts.Empty
 		}
 		table.Alias = utils.ExtractAlias(alias)
 	}
-	return table, sql
+	return table, sql, nil
 }
 
-// Table 主表解析
-type Table struct {
-	Name   string  // 表名
-	Alias  string  // 表别名
-	Select *Select // 子查询
-}
-
-func (t *Table) beautify(withAs ...bool) string {
-	sql := strings.Builder{}
-	if t.Select != nil {
-		sql.WriteString(consts.LeftBracket)
-		sql.WriteString(t.Select.Beautify())
-		sql.WriteString(consts.RightBracket)
+func tableSQL(t *model.Table, withAs ...bool) string {
+	var b strings.Builder
+	if t.SubSQL != "" {
+		b.WriteString(consts.LeftBracket)
+		b.WriteString(t.SubSQL)
+		b.WriteString(consts.RightBracket)
 	} else {
-		sql.WriteString(t.Name)
+		b.WriteString(t.Name)
 	}
 	if t.Alias != "" {
 		if len(withAs) > 0 && withAs[0] {
-			sql.WriteString(consts.Blank)
-			sql.WriteString(consts.AS)
+			b.WriteString(consts.Blank)
+			b.WriteString(consts.AS)
 		}
-		sql.WriteString(consts.Blank)
-		sql.WriteString(t.Alias)
+		b.WriteString(consts.Blank)
+		b.WriteString(t.Alias)
 	}
-	return sql.String()
-
+	return b.String()
 }
 
-// Field 字段解析
-type Field struct {
-	Name  string // 字段名
-	Alias string // 字段别名，仅查询使用
-	Value string // 字段值
+// beautifyCondition 构建条件SQL（供 Update 和 Delete 复用）
+func (s *SQL) beautifyCondition(filters []*model.Filter) string {
+	if len(filters) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	var maxLen int
+	for _, f := range filters {
+		if l := len(f.Field.Name); maxLen < l {
+			maxLen = l
+		}
+	}
+	b.WriteString(consts.NextLine)
+	b.WriteString(s.align(consts.WHERE))
+	b.WriteString(consts.Blank)
+	for i, f := range filters {
+		if i > 0 {
+			b.WriteString(consts.NextLine)
+			if f.LogicOp == "" {
+				b.WriteString(s.align(consts.AND))
+				b.WriteString(consts.Blank)
+			} else {
+				b.WriteString(s.align(string(f.LogicOp)))
+				b.WriteString(consts.Blank)
+			}
+		}
+		if f.Field.Name != "" {
+			b.WriteString(f.Field.Name)
+			b.WriteString(strings.Repeat(consts.Blank, maxLen-len(f.Field.Name)+1))
+			b.WriteString(string(f.Op))
+			b.WriteString(consts.Blank)
+		}
+		fmt.Fprint(&b, f.Value)
+	}
+	return b.String()
 }
